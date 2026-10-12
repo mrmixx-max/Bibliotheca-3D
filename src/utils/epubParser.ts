@@ -1,5 +1,38 @@
 import JSZip from 'jszip';
+import DOMPurify from 'dompurify';
 import { BookMetadata, Chapter, ParsedBook, RenderedPage } from '../types/epub';
+
+/**
+ * Tags/attributes a book legitimately needs for reading.
+ * Everything else — scripts, event handlers, frames, forms, external refs —
+ * is dropped. `style` is excluded on purpose: the reader renders plain text,
+ * so inline CSS is never required and only opens data-exfiltration vectors.
+ */
+const BOOK_SANITIZE_CONFIG = {
+  ALLOWED_TAGS: [
+    'p', 'br', 'hr', 'em', 'strong', 'i', 'b', 'u', 's', 'sub', 'sup', 'small',
+    'span', 'div', 'blockquote', 'pre', 'code',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'ul', 'ol', 'li', 'dl', 'dt', 'dd',
+    'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption',
+    'img', 'figure', 'figcaption', 'a', 'abbr', 'cite', 'q', 'time'
+  ],
+  ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'lang', 'dir', 'colspan', 'rowspan'],
+  ALLOW_DATA_ATTR: false,
+  FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input',
+    'button', 'select', 'textarea', 'link', 'meta', 'base', 'svg', 'math'],
+  FORBID_ATTR: ['style', 'srcset', 'formaction', 'action', 'poster', 'background',
+    'xlink:href', 'onerror', 'onload', 'onclick']
+};
+
+/**
+ * Strips anything executable or externally-referencing from EPUB-supplied HTML.
+ * Applied once at parse time so every downstream consumer (2D view, canvas
+ * texture renderer, single-file exporter) receives already-clean markup.
+ */
+export function sanitizeBookHtml(html: string): string {
+  return DOMPurify.sanitize(html, BOOK_SANITIZE_CONFIG as never) as unknown as string;
+}
 
 /**
  * Parses an EPUB file (ArrayBuffer or File) into structured chapters and spreads
@@ -128,7 +161,7 @@ export async function parseEpubFile(data: ArrayBuffer | File): Promise<ParsedBoo
       }
     });
 
-    const contentHtml = body.innerHTML;
+    const contentHtml = sanitizeBookHtml(body.innerHTML);
     if (stripHtml(contentHtml).trim().length > 10) {
       chapters.push({
         id: idref,
@@ -211,6 +244,8 @@ export function paginateChapters(chapters: Chapter[], metadata: BookMetadata, fo
 
     // Clean and extract paragraphs
     const tmp = document.createElement('div');
+    // SAFE: chapter.content is DOMPurify-sanitized at parse time (epubParser.ts).
+    // Detached div, read via textContent only.
     tmp.innerHTML = chapter.content;
     tmp.querySelectorAll('script, style, h1, h2, h3, h4, h5, h6').forEach(el => el.remove());
 
@@ -324,6 +359,7 @@ function resolvePath(base: string, relative: string): string {
 
 function stripHtml(html: string): string {
   const tmp = document.createElement('div');
+  // SAFE: only called with already-sanitized chapter markup; detached, text-only read.
   tmp.innerHTML = html;
   return tmp.textContent || tmp.innerText || '';
 }

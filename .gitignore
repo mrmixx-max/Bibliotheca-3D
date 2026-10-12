@@ -6,3 +6,7 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Local test fixtures (malicious EPUB used to verify the sanitizer)
+xss-test.epub
+xss-harness/

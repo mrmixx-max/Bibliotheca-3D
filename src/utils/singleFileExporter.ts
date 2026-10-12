@@ -2,10 +2,25 @@ import { ParsedBook } from '../types/epub';
 
 /**
  * Generates and downloads a complete, self-contained single-file HTML
- * with embedded Three.js, CSS styles, procedural textures, and book reader!
+ * with embedded Three.js, CSS styles, procedural textures, and book reader.
+ *
+ * Fully offline: Three.js is inlined (no CDN) and only system font stacks are
+ * used (no Google Fonts request), so the exported file renders on a machine
+ * with no network connection.
+ *
+ * The inlined Three.js bundle is ~726 kB and is only needed when a book is
+ * actually exported, so it is loaded via dynamic import. Vite splits it into
+ * its own chunk and the reader itself never pays for it.
  */
-export function exportStandaloneHtmlFile(book: ParsedBook) {
-  const serializedBook = JSON.stringify(book).replace(/</g, '\\u003c');
+export async function exportStandaloneHtmlFile(book: ParsedBook) {
+  const { THREE_BUNDLE_JS } = await import('./threeBundle.generated');
+  // Only metadata + pages are needed by the exported reader. The chapters array
+  // holds the full chapter HTML including base64-inlined EPUB images, which the
+  // exporter never renders — dropping it keeps exported files small.
+  const serializedBook = JSON.stringify({
+    metadata: book.metadata,
+    pages: book.pages
+  }).replace(/</g, '\\u003c');
 
   const htmlContent = `<!DOCTYPE html>
 <html lang="de">
@@ -28,7 +43,7 @@ export function exportStandaloneHtmlFile(book: ParsedBook) {
     .side-left { left: 0; border-radius: 0 12px 12px 0; }
     .side-right { right: 0; border-radius: 12px 0 0 12px; }
   </style>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>${THREE_BUNDLE_JS}</script>
 </head>
 <body>
   <div id="canvas-container"></div>
@@ -99,10 +114,17 @@ export function exportStandaloneHtmlFile(book: ParsedBook) {
       ctx.font = '26px Georgia, serif';
 
       const div = document.createElement('div');
+      // SAFE: page.htmlContent was passed through DOMPurify at parse time
+      // (see BOOK_SANITIZE_CONFIG in epubParser.ts), so this markup contains no
+      // scripts, event handlers or external references. The detached div is
+      // only ever read via textContent below — it is never inserted into the
+      // live document. The exported HTML string additionally escapes every
+      // less-than sign in the serialized book data (see serializedBook above).
       div.innerHTML = page.htmlContent || '';
       div.querySelectorAll('script, style, h1, h2, h3').forEach(el => el.remove());
 
       const paragraphs = [];
+      const images = [];
       const pEls = div.querySelectorAll('p, blockquote, div');
       if (pEls.length > 0) {
         pEls.forEach(el => {
@@ -113,6 +135,12 @@ export function exportStandaloneHtmlFile(book: ParsedBook) {
         const t = (div.textContent || '').trim();
         if (t) paragraphs.push(...t.split(/\n+/).map(s => s.trim()).filter(Boolean));
       }
+
+      // Collect embedded images (data URLs from the EPUB) in document order
+      div.querySelectorAll('img').forEach(img => {
+        const src = img.getAttribute('src');
+        if (src && src.startsWith('data:image/')) images.push(src);
+      });
 
       let y = 170;
       const margin = isLeft ? 110 : 130;
@@ -172,6 +200,24 @@ export function exportStandaloneHtmlFile(book: ParsedBook) {
           y += 40;
         }
         y += 14; // Paragraph gap
+      }
+
+      // Draw any embedded illustrations below the text block
+      const imgHeight = 340;
+      const imgWidth = Math.min(maxW, 480);
+      for (const src of images) {
+        if (y + imgHeight > maxY) break;
+        const im = new Image();
+        im.src = src;
+        try {
+          const scale = Math.min(imgWidth / im.width, imgHeight / im.height) || 1;
+          const dw = (im.width || imgWidth) * scale;
+          const dh = (im.height || imgHeight) * scale;
+          ctx.drawImage(im, margin + (maxW - dw) / 2, y + 10, dw, dh);
+          y += dh + 30;
+        } catch (e) {
+          // Image not decodable — skip it rather than aborting the page
+        }
       }
 
       // Footer

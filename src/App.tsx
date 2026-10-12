@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import confetti from 'canvas-confetti';
 import { Bookmark, ParsedBook, ReadingSettings, TextHighlight } from './types/epub';
+import { bookId, progressKey } from './utils/bookIdentity';
 import { getParsedSampleBook } from './utils/sampleBooks';
 import { paginateChapters, parseEpubFile } from './utils/epubParser';
 import { Book3DScene } from './components/Book3DScene';
@@ -161,6 +162,20 @@ export default function App() {
     }
   }, [highlights]);
 
+  // Identity of the book currently open — scopes bookmarks, highlights and progress
+  const activeBookId = useMemo(() => bookId(book.metadata), [book.metadata]);
+
+  // Bookmarks/highlights for the open book only. The full arrays stay in state so
+  // switching books never discards the other titles' entries.
+  const activeBookmarks = useMemo(
+    () => bookmarks.filter((b) => b.bookId === activeBookId),
+    [bookmarks, activeBookId]
+  );
+  const activeHighlights = useMemo(
+    () => highlights.filter((h) => h.bookId === activeBookId),
+    [highlights, activeBookId]
+  );
+
   // Audio ambience controller
   useEffect(() => {
     if (settings.ambientSound !== 'none' && settings.soundEnabled) {
@@ -234,28 +249,28 @@ export default function App() {
   // Restore saved reading progress when book changes
   useEffect(() => {
     try {
-      const savedPage = localStorage.getItem(`bibliotheca_progress_${book.metadata.title}`);
+      const savedPage = localStorage.getItem(progressKey(book.metadata));
       if (savedPage !== null) {
         const parsedIdx = parseInt(savedPage, 10);
         if (!isNaN(parsedIdx) && parsedIdx >= 0 && parsedIdx < book.pages.length) {
           setCurrentSpreadIndex(parsedIdx % 2 === 0 ? parsedIdx : parsedIdx - 1);
+          return;
         }
-      } else {
-        setCurrentSpreadIndex(0);
       }
+      setCurrentSpreadIndex(0);
     } catch {
       setCurrentSpreadIndex(0);
     }
-  }, [book.metadata.title, book.pages.length]);
+  }, [book.metadata, book.pages.length]);
 
   // Persist current page for active book
   useEffect(() => {
     try {
-      localStorage.setItem(`bibliotheca_progress_${book.metadata.title}`, String(currentSpreadIndex));
+      localStorage.setItem(progressKey(book.metadata), String(currentSpreadIndex));
     } catch {
       // ignore
     }
-  }, [book.metadata.title, currentSpreadIndex]);
+  }, [book.metadata, currentSpreadIndex]);
 
   // Unlock browser audio context on first user interaction
   useEffect(() => {
@@ -288,6 +303,7 @@ export default function App() {
 
     const newBm: Bookmark = {
       id: 'bm_' + Date.now(),
+      bookId: activeBookId,
       pageIndex,
       chapterTitle: page ? page.chapterTitle : 'Lesezeichen',
       excerpt,
@@ -302,9 +318,10 @@ export default function App() {
     setBookmarks((prev) => prev.filter((b) => b.id !== id));
   };
 
-  const handleAddHighlight = (hl: Omit<TextHighlight, 'id' | 'timestamp'>) => {
+  const handleAddHighlight = (hl: Omit<TextHighlight, 'id' | 'timestamp' | 'bookId'>) => {
     const newHl: TextHighlight = {
       ...hl,
+      bookId: activeBookId,
       id: 'hl_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
       timestamp: Date.now()
     };
@@ -319,18 +336,23 @@ export default function App() {
     const leftP = book.pages[currentSpreadIndex];
     const rightP = book.pages[currentSpreadIndex + 1];
     const combinedText = [leftP?.htmlContent, rightP?.htmlContent].filter(Boolean).join(' ');
-    speechReader.toggle(combinedText, () => {
-      handleTurnPage('next');
-    });
-  }, [book.pages, currentSpreadIndex, handleTurnPage]);
+    speechReader.toggle(
+      combinedText,
+      () => {
+        handleTurnPage('next');
+      },
+      1.0,
+      book.metadata.language || 'de-DE'
+    );
+  }, [book.pages, book.metadata.language, currentSpreadIndex, handleTurnPage]);
 
   // Clean up speech on book change
   useEffect(() => {
     speechReader.stop();
-  }, [book.metadata.title]);
+  }, [activeBookId]);
 
   const handleExportHtml = () => {
-    exportStandaloneHtmlFile(book);
+    void exportStandaloneHtmlFile(book);
   };
 
   const handleUpdateSettings = useCallback((partial: Partial<ReadingSettings>) => {
@@ -422,7 +444,7 @@ export default function App() {
           readingZoom={settings.readingZoom}
           soundEnabled={settings.soundEnabled}
           onSwitchTo3D={() => setSettings((s) => ({ ...s, viewMode: '3d' }))}
-          highlights={highlights}
+          highlights={activeHighlights}
           onAddHighlight={handleAddHighlight}
           searchHighlightTerm={searchHighlightTerm}
           onClearSearchHighlight={() => setSearchHighlightTerm('')}
@@ -508,14 +530,15 @@ export default function App() {
       <BookmarksModal
         isOpen={isBookmarksOpen}
         onClose={() => setIsBookmarksOpen(false)}
-        bookmarks={bookmarks}
-        highlights={highlights}
+        bookmarks={activeBookmarks}
+        highlights={activeHighlights}
         onAddBookmark={handleAddBookmark}
         onDeleteBookmark={handleDeleteBookmark}
         onDeleteHighlight={handleDeleteHighlight}
         onJumpToBookmark={handleSelectPage}
         currentSpreadIndex={currentSpreadIndex}
         currentPage={book.pages[currentSpreadIndex] || null}
+        bookTitle={book.metadata.title}
       />
 
       <SearchModal

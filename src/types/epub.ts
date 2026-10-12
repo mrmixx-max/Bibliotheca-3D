@@ -40,6 +40,8 @@ export interface ParsedBook {
 
 export interface Bookmark {
   id: string;
+  /** Scopes the bookmark to its book; without it entries leak across titles. */
+  bookId: string;
   pageIndex: number;
   chapterTitle: string;
   excerpt: string;
@@ -114,6 +116,8 @@ export type HighlightColor = 'amber' | 'emerald' | 'rose' | 'sky';
 
 export interface TextHighlight {
   id: string;
+  /** Scopes the highlight to its book; without it entries leak across titles. */
+  bookId: string;
   pageIndex: number;
   text: string;
   color: HighlightColor;

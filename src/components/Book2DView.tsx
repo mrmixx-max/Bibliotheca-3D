@@ -29,7 +29,7 @@ interface Book2DViewProps {
   soundEnabled: boolean;
   onSwitchTo3D: () => void;
   highlights?: TextHighlight[];
-  onAddHighlight?: (highlight: Omit<TextHighlight, 'id' | 'timestamp'>) => void;
+  onAddHighlight?: (highlight: Omit<TextHighlight, 'id' | 'timestamp' | 'bookId'>) => void;
   searchHighlightTerm?: string;
   onClearSearchHighlight?: () => void;
 }
@@ -355,6 +355,8 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
   const extractParagraphs = (html: string) => {
     const clean = html.replace(/<h[1-6][^>]*>[\s\S]*?<\/h[1-6]>/gi, '');
     const div = document.createElement('div');
+    // SAFE: page html originates from DOMPurify-sanitized chapter content.
+    // Detached div; only textContent is read, never inserted into the document.
     div.innerHTML = clean;
 
     const list: string[] = [];

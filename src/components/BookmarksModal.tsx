@@ -12,6 +12,8 @@ interface BookmarksModalProps {
   onJumpToBookmark: (pageIndex: number) => void;
   currentSpreadIndex: number;
   currentPage: RenderedPage | null;
+  /** Shown in the header so it is clear which title these entries belong to. */
+  bookTitle?: string;
 }
 
 export const BookmarksModal: React.FC<BookmarksModalProps> = ({
@@ -23,7 +25,8 @@ export const BookmarksModal: React.FC<BookmarksModalProps> = ({
   onDeleteBookmark,
   onDeleteHighlight,
   onJumpToBookmark,
-  currentSpreadIndex
+  currentSpreadIndex,
+  bookTitle
 }) => {
   const [activeTab, setActiveTab] = useState<'bookmarks' | 'highlights'>('bookmarks');
   const [newNote, setNewNote] = useState('');
@@ -57,7 +60,9 @@ export const BookmarksModal: React.FC<BookmarksModalProps> = ({
         <div className="flex items-center justify-between px-6 py-4 border-b border-stone-800">
           <div>
             <h2 className="text-base font-semibold text-stone-100 font-serif">Lesezeichen & Markierungen</h2>
-            <p className="text-xs text-stone-400 mt-0.5">Ihre gemerkten Seiten und markierten Zitate</p>
+            <p className="text-xs text-stone-400 mt-0.5">
+              {bookTitle ? <>Nur für <span className="text-amber-300/90 font-serif italic">{bookTitle}</span></> : 'Ihre gemerkten Seiten und markierten Zitate'}
+            </p>
           </div>
           <button
             onClick={onClose}

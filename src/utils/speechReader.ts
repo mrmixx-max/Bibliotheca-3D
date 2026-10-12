@@ -27,7 +27,7 @@ class SpeechReader {
     this.listeners.forEach((cb) => cb(this.isSpeaking, this.isPaused));
   }
 
-  public speak(text: string, onEnd?: () => void, rate = 1.0) {
+  public speak(text: string, onEnd?: () => void, rate = 1.0, lang = 'de-DE') {
     if (!this.synth) return;
 
     this.stop();
@@ -38,14 +38,17 @@ class SpeechReader {
 
     const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.rate = rate;
-    utterance.lang = 'de-DE'; // Default German, matches Little Prince in German
+    utterance.lang = lang;
 
-    // Find best German voice if available
+    // Prefer a voice matching the book's language, falling back to any voice
+    // whose language tag starts with the same primary subtag (de-DE -> de).
     const voices = this.synth.getVoices();
-    const deVoice = voices.find((v) => v.lang.startsWith('de') && !v.name.includes('Google') === false) ||
-      voices.find((v) => v.lang.startsWith('de'));
-    if (deVoice) {
-      utterance.voice = deVoice;
+    const primary = lang.split('-')[0].toLowerCase();
+    const exact = voices.find((v) => v.lang.toLowerCase() === lang.toLowerCase());
+    const sameLanguage = voices.find((v) => v.lang.toLowerCase().startsWith(primary));
+    const chosen = exact || sameLanguage;
+    if (chosen) {
+      utterance.voice = chosen;
     }
 
     utterance.onstart = () => {
@@ -99,13 +102,13 @@ class SpeechReader {
     }
   }
 
-  public toggle(text: string, onEnd?: () => void, rate = 1.0) {
+  public toggle(text: string, onEnd?: () => void, rate = 1.0, lang = 'de-DE') {
     if (this.isSpeaking && !this.isPaused) {
       this.pause();
     } else if (this.isSpeaking && this.isPaused) {
       this.resume();
     } else {
-      this.speak(text, onEnd, rate);
+      this.speak(text, onEnd, rate, lang);
     }
   }
 
