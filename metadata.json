@@ -1,0 +1,6 @@
+{
+  "name": "Bibliotheca 3D - Voll-3D EPUB Reader",
+  "description": "Der ultimative fotorealistische 3D EPUB E-Book Reader mit dynamischer Seitenblätter-Physik, atmosphärischer Raumbeleuchtung und vollständiger Offline-EPUB-Unterstützung.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
