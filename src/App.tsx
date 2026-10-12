@@ -7,7 +7,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import confetti from 'canvas-confetti';
 import { Bookmark, ParsedBook, ReadingSettings } from './types/epub';
 import { getParsedSampleBook } from './utils/sampleBooks';
-import { parseEpubFile } from './utils/epubParser';
+import { paginateChapters, parseEpubFile } from './utils/epubParser';
 import { Book3DScene } from './components/Book3DScene';
 import { Book2DView } from './components/Book2DView';
 import { ReaderHUD } from './components/ReaderHUD';
@@ -45,9 +45,9 @@ export default function App() {
     const defaults: ReadingSettings = {
       viewMode: '3d',
       twoPageSpread2D: true,
-      fontFamily: 'cormorant',
-      fontSize: 26,
-      lineHeight: 44,
+      fontFamily: 'source-serif',
+      fontSize: 28,
+      lineHeight: 46,
       bionicReading: false,
       paperTonePreset: 'creme',
       readingZoom: 1.0,
@@ -267,6 +267,27 @@ export default function App() {
     exportStandaloneHtmlFile(book);
   };
 
+  const handleUpdateSettings = useCallback((partial: Partial<ReadingSettings>) => {
+    setSettings((prev) => {
+      const next = { ...prev, ...partial };
+      if (partial.fontSize && !partial.lineHeight) {
+        next.lineHeight = Math.round(partial.fontSize * 1.62);
+      }
+      return next;
+    });
+
+    if (partial.fontSize !== undefined) {
+      const newSize = partial.fontSize;
+      setBook((prev) => {
+        if (!prev.chapters || prev.chapters.length === 0) return prev;
+        return {
+          ...prev,
+          pages: paginateChapters(prev.chapters, prev.metadata, newSize)
+        };
+      });
+    }
+  }, []);
+
   // Window drag & drop handler for EPUB files
   useEffect(() => {
     const handleDragOver = (e: DragEvent) => {
@@ -362,6 +383,9 @@ export default function App() {
         onToggleBionic={() => setSettings((s) => ({ ...s, bionicReading: !s.bionicReading }))}
         onUploadEpub={() => setIsLibraryOpen(true)}
         onExportHtml={handleExportHtml}
+        fontFamily={settings.fontFamily}
+        fontSize={settings.fontSize}
+        onUpdateSettings={handleUpdateSettings}
       />
 
       {/* Modals */}
@@ -387,7 +411,7 @@ export default function App() {
         isOpen={isTypographyOpen}
         onClose={() => setIsTypographyOpen(false)}
         settings={settings}
-        onUpdateSettings={(partial) => setSettings((s) => ({ ...s, ...partial }))}
+        onUpdateSettings={handleUpdateSettings}
         onOpenSpeedReader={() => setIsSpeedReaderOpen(true)}
       />
 
@@ -403,7 +427,7 @@ export default function App() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
-        onUpdateSettings={(partial) => setSettings((s) => ({ ...s, ...partial }))}
+        onUpdateSettings={handleUpdateSettings}
         onExportHtml={handleExportHtml}
       />
 

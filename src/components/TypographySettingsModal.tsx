@@ -18,11 +18,13 @@ export const TypographySettingsModal: React.FC<TypographySettingsModalProps> = (
 }) => {
   if (!isOpen) return null;
 
-  const fontOptions: { id: FontFamily; label: string; preview: string }[] = [
-    { id: 'cormorant', label: 'Cormorant Garamond', preview: 'Klassische Antiqua' },
-    { id: 'source-serif', label: 'Source Serif 4', preview: 'Moderne Buchschrift' },
-    { id: 'sans', label: 'Plus Jakarta Sans', preview: 'Klare Serifenlose' },
-    { id: 'mono', label: 'JetBrains Mono', preview: 'Fokus-Monospace' }
+  const fontOptions: { id: FontFamily; label: string; preview: string; styleName: string }[] = [
+    { id: 'cormorant', label: 'Cormorant Garamond', preview: 'Klassische Antiqua (Elegant)', styleName: '"Cormorant Garamond", serif' },
+    { id: 'source-serif', label: 'Source Serif 4', preview: 'Moderne Buchschrift (Leserlich)', styleName: '"Source Serif 4", serif' },
+    { id: 'lora', label: 'Lora', preview: 'Zeitgenössische Serif (Atmosphärisch)', styleName: '"Lora", serif' },
+    { id: 'literata', label: 'Literata', preview: 'E-Book Meisterschrift (Exzellenter Kontrast)', styleName: '"Literata", serif' },
+    { id: 'sans', label: 'Plus Jakarta Sans', preview: 'Klare Serifenlose (Modern)', styleName: '"Plus Jakarta Sans", sans-serif' },
+    { id: 'mono', label: 'JetBrains Mono', preview: 'Fokus-Monospace (Dyslexie-Freundlich)', styleName: '"JetBrains Mono", monospace' }
   ];
 
   const paperTones: { id: PaperTonePreset; label: string; bg: string; text: string }[] = [
@@ -241,21 +243,55 @@ export const TypographySettingsModal: React.FC<TypographySettingsModalProps> = (
           {/* Font Size & Line Height Sliders */}
           <div className="space-y-4 pt-2 border-t border-stone-800/80">
             {/* Font size */}
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-stone-400">Schriftgröße:</span>
-                <span className="font-mono tabular-nums text-amber-300 font-semibold">
-                  {settings.fontSize} pt
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => onUpdateSettings({ fontSize: Math.max(18, settings.fontSize - 2) })}
+                    className="w-6 h-6 rounded bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold flex items-center justify-center cursor-pointer transition-colors"
+                    title="Schrift verkleinern"
+                  >
+                    A-
+                  </button>
+                  <span className="font-mono tabular-nums text-amber-300 font-bold min-w-[50px] text-center">
+                    {settings.fontSize} pt
+                  </span>
+                  <button
+                    onClick={() => onUpdateSettings({ fontSize: Math.min(38, settings.fontSize + 2) })}
+                    className="w-6 h-6 rounded bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold flex items-center justify-center cursor-pointer transition-colors"
+                    title="Schrift vergrößern"
+                  >
+                    A+
+                  </button>
+                </div>
               </div>
+
+              {/* Quick Presets */}
+              <div className="grid grid-cols-5 gap-1.5">
+                {[20, 24, 28, 32, 36].map((size) => (
+                  <button
+                    key={size}
+                    onClick={() => onUpdateSettings({ fontSize: size })}
+                    className={`py-1 rounded-md text-[11px] font-mono transition-all cursor-pointer ${
+                      settings.fontSize === size
+                        ? 'bg-amber-400 text-stone-950 font-bold shadow-sm'
+                        : 'bg-stone-800 text-stone-400 hover:text-stone-200 hover:bg-stone-700'
+                    }`}
+                  >
+                    {size} pt
+                  </button>
+                ))}
+              </div>
+
               <input
                 type="range"
-                min="20"
-                max="36"
+                min="18"
+                max="38"
                 step="1"
                 value={settings.fontSize}
                 onChange={(e) => onUpdateSettings({ fontSize: parseInt(e.target.value, 10) })}
-                className="w-full h-1 bg-stone-800 rounded-lg appearance-none cursor-pointer accent-amber-300"
+                className="w-full h-1 bg-stone-800 rounded-lg appearance-none cursor-pointer accent-amber-300 mt-1"
               />
             </div>
 

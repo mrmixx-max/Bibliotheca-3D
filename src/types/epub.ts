@@ -66,7 +66,7 @@ export interface AtmosphereConfig {
   sceneBackground: string;
 }
 
-export type FontFamily = 'cormorant' | 'source-serif' | 'sans' | 'mono';
+export type FontFamily = 'cormorant' | 'source-serif' | 'lora' | 'literata' | 'sans' | 'mono';
 
 export type AmbientSoundType = 'none' | 'fireplace' | 'rain' | 'library';
 

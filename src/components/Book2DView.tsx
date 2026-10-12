@@ -81,6 +81,8 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
   const fontFamilies: Record<FontFamily, string> = {
     cormorant: '"Cormorant Garamond", Georgia, serif',
     'source-serif': '"Source Serif 4", Georgia, serif',
+    lora: '"Lora", Georgia, serif',
+    literata: '"Literata", Georgia, serif',
     sans: '"Plus Jakarta Sans", -apple-system, sans-serif',
     mono: '"JetBrains Mono", monospace'
   };

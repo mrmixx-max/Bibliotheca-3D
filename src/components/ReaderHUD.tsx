@@ -1,5 +1,5 @@
 import React from 'react';
-import { AtmosphereTheme, BookMetadata, IsochronicConfig, ViewMode } from '../types/epub';
+import { AtmosphereTheme, BookMetadata, FontFamily, IsochronicConfig, ReadingSettings, ViewMode } from '../types/epub';
 
 interface ReaderHUDProps {
   metadata: BookMetadata;
@@ -24,6 +24,9 @@ interface ReaderHUDProps {
   onToggleBionic: () => void;
   onUploadEpub: () => void;
   onExportHtml: () => void;
+  fontFamily: FontFamily;
+  fontSize: number;
+  onUpdateSettings: (partial: Partial<ReadingSettings>) => void;
 }
 
 export const ReaderHUD: React.FC<ReaderHUDProps> = ({
@@ -48,16 +51,28 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
   bionicReading,
   onToggleBionic,
   onUploadEpub,
-  onExportHtml
+  onExportHtml,
+  fontFamily,
+  fontSize,
+  onUpdateSettings
 }) => {
   const currentLeftPage = currentSpreadIndex + 1;
   const currentRightPage = Math.min(currentSpreadIndex + 2, totalPages);
   const percentRead = Math.round((currentRightPage / Math.max(totalPages, 1)) * 100);
 
+  const fontLabels: Record<FontFamily, { label: string; sub: string }> = {
+    'source-serif': { label: 'Source Serif 4', sub: 'Moderne Buchschrift' },
+    cormorant: { label: 'Cormorant Garamond', sub: 'Klassische Antiqua' },
+    lora: { label: 'Lora', sub: 'Atmosphärisch' },
+    literata: { label: 'Literata', sub: 'E-Book Meisterschrift' },
+    sans: { label: 'Plus Jakarta Sans', sub: 'Klare Serifenlose' },
+    mono: { label: 'JetBrains Mono', sub: 'Fokus-Monospace' }
+  };
+
   return (
     <>
       {/* Top Bar Contract: 3 zones separated by gap-8 */}
-      <header className="fixed top-0 left-0 right-0 z-30 flex items-center justify-between gap-8 px-6 py-4 bg-stone-950/75 backdrop-blur-md border-b border-stone-800/60 select-none">
+      <header className="fixed top-0 left-0 right-0 z-30 flex items-center justify-between gap-6 px-6 py-3.5 bg-stone-950/80 backdrop-blur-md border-b border-stone-800/60 select-none">
         {/* Zone 1: Brand Wordmark */}
         <div className="flex items-center gap-3 shrink-0">
           <span className="font-serif font-bold text-lg tracking-wider text-amber-200/90 uppercase whitespace-nowrap">
@@ -69,11 +84,11 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
         </div>
 
         {/* Zone 2: Clean single-line nav links */}
-        <nav className="hidden md:flex items-center gap-5 text-xs font-medium text-stone-300">
+        <nav className="hidden lg:flex items-center gap-4 text-xs font-medium text-stone-300">
           {/* Dedicated 2D / 3D Mode Switcher Button */}
           <button
             onClick={() => onViewModeChange(viewMode === '3d' ? '2d' : '3d')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 ${
               viewMode === '2d'
                 ? 'bg-amber-400 text-stone-950 border-amber-300 shadow-md font-bold'
                 : 'bg-stone-900/90 text-amber-200/90 border-amber-500/30 hover:bg-stone-800 hover:text-amber-100'
@@ -90,18 +105,65 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
             <span>{viewMode === '3d' ? '2D Modus' : '3D Modus'}</span>
           </button>
 
-          <button
-            onClick={onOpenLibrary}
-            className="hover:text-amber-200 transition-colors whitespace-nowrap cursor-pointer"
-          >
-            Bibliothek
-          </button>
-          <button
-            onClick={onOpenTOC}
-            className="hover:text-amber-200 transition-colors whitespace-nowrap cursor-pointer"
-          >
-            Inhaltsverzeichnis
-          </button>
+          {/* Quick Font Family Dropdown */}
+          <div className="relative group">
+            <button
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-stone-900/90 border border-stone-800 text-stone-300 hover:text-amber-200 hover:border-amber-500/40 text-xs transition-colors cursor-pointer"
+              title="Schriftart direkt wechseln"
+            >
+              <span className="text-stone-500 text-[11px]">Schrift:</span>
+              <span className="font-semibold text-amber-200">
+                {fontLabels[fontFamily]?.label || 'Schrift'}
+              </span>
+              <svg className="w-3 h-3 text-stone-500 group-hover:text-amber-200 transition-transform group-hover:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            <div className="absolute top-full left-0 mt-1 hidden group-hover:flex flex-col bg-stone-900 border border-stone-800 rounded-xl shadow-2xl p-1.5 min-w-[200px] z-50">
+              {(Object.keys(fontLabels) as FontFamily[]).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => onUpdateSettings({ fontFamily: f })}
+                  className={`px-2.5 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer flex flex-col ${
+                    fontFamily === f
+                      ? 'bg-amber-400 text-stone-950 font-bold'
+                      : 'text-stone-300 hover:bg-stone-800 hover:text-amber-200'
+                  }`}
+                >
+                  <span className="font-medium">{fontLabels[f].label}</span>
+                  <span className={`text-[10px] ${fontFamily === f ? 'text-stone-900/80 font-normal' : 'text-stone-500'}`}>
+                    {fontLabels[f].sub}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Quick Font Size Controls: A- / [size] / A+ */}
+          <div className="flex items-center bg-stone-900/90 border border-stone-800 rounded-lg p-0.5" title="Schriftgröße anpassen">
+            <button
+              onClick={() => onUpdateSettings({ fontSize: Math.max(18, fontSize - 2) })}
+              className="w-6 h-6 rounded flex items-center justify-center text-xs font-bold text-stone-400 hover:text-stone-100 hover:bg-stone-800 transition-colors cursor-pointer"
+              title="Schrift kleiner (A-)"
+            >
+              A-
+            </button>
+            <button
+              onClick={onOpenTypography}
+              className="px-2 text-xs font-mono font-semibold text-amber-300 hover:text-amber-100 cursor-pointer"
+              title="Typografie-Menü öffnen"
+            >
+              {fontSize}pt
+            </button>
+            <button
+              onClick={() => onUpdateSettings({ fontSize: Math.min(38, fontSize + 2) })}
+              className="w-6 h-6 rounded flex items-center justify-center text-xs font-bold text-stone-400 hover:text-stone-100 hover:bg-stone-800 transition-colors cursor-pointer"
+              title="Schrift größer (A+)"
+            >
+              A+
+            </button>
+          </div>
+
           <button
             onClick={onOpenTypography}
             className="hover:text-amber-200 transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1"
@@ -119,7 +181,7 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
             <svg className="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
-            <span>Speed-Reading</span>
+            <span>Speed</span>
           </button>
           <button
             onClick={onOpenSettings}
@@ -131,11 +193,23 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
             )}
           </button>
           <button
+            onClick={onOpenLibrary}
+            className="hover:text-amber-200 transition-colors whitespace-nowrap cursor-pointer"
+          >
+            Bibliothek
+          </button>
+          <button
+            onClick={onOpenTOC}
+            className="hover:text-amber-200 transition-colors whitespace-nowrap cursor-pointer"
+          >
+            Inhalt
+          </button>
+          <button
             onClick={onExportHtml}
             className="hover:text-amber-200 transition-colors whitespace-nowrap text-amber-400/90 cursor-pointer"
             title="Diesen 3D-Reader als reine, eigenständige Single-File-HTML-Datei exportieren"
           >
-            HTML Export
+            Export
           </button>
         </nav>
 
@@ -197,6 +271,31 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
               </svg>
               <span className="hidden sm:inline">Speed</span>
             </button>
+
+            {/* Quick Font Size Stepper: A- / [size] / A+ */}
+            <div className="flex items-center bg-stone-900 border border-stone-800 rounded-md p-0.5 text-stone-300">
+              <button
+                onClick={() => onUpdateSettings({ fontSize: Math.max(18, fontSize - 2) })}
+                title="Schriftgröße verkleinern (A-)"
+                className="w-5 h-5 flex items-center justify-center text-[10px] font-bold text-stone-400 hover:text-stone-100 hover:bg-stone-800 rounded transition-colors cursor-pointer"
+              >
+                A-
+              </button>
+              <button
+                onClick={onOpenTypography}
+                title="Typografie öffnen"
+                className="px-1.5 py-0.5 text-[10px] font-mono font-semibold text-amber-300 hover:text-amber-100 cursor-pointer"
+              >
+                {fontSize}pt
+              </button>
+              <button
+                onClick={() => onUpdateSettings({ fontSize: Math.min(38, fontSize + 2) })}
+                title="Schriftgröße vergrößern (A+)"
+                className="w-5 h-5 flex items-center justify-center text-[10px] font-bold text-stone-400 hover:text-stone-100 hover:bg-stone-800 rounded transition-colors cursor-pointer"
+              >
+                A+
+              </button>
+            </div>
           </div>
 
           {/* Quick 2D / 3D Mode Switcher (Segmented Control) */}

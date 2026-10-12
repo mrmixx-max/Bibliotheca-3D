@@ -194,11 +194,17 @@ function escapeHtml(str: string): string {
 }
 
 /**
- * Paginates chapters into pages fitting the 3D book canvas
+ * Paginates chapters into pages fitting the 3D book canvas, adjusting dynamically to font size
  */
-export function paginateChapters(chapters: Chapter[], metadata: BookMetadata): RenderedPage[] {
+export function paginateChapters(chapters: Chapter[], metadata: BookMetadata, fontSize = 26): RenderedPage[] {
   const pages: RenderedPage[] = [];
   let currentPageNumber = 1;
+
+  // Scale target words dynamically based on font size (26pt is standard baseline):
+  const fontRatio = 26 / Math.max(fontSize, 18);
+  const targetWordsChapterStart = Math.max(80, Math.round(170 * fontRatio));
+  const targetWordsNormal = Math.max(110, Math.round(230 * fontRatio));
+  const minWordsCommit = Math.max(40, Math.round(65 * fontRatio));
 
   for (let cIdx = 0; cIdx < chapters.length; cIdx++) {
     const chapter = chapters[cIdx];
@@ -230,8 +236,9 @@ export function paginateChapters(chapters: Chapter[], metadata: BookMetadata): R
 
     // Expand any very long paragraphs so they can break across pages gracefully
     const processedParagraphs: string[] = [];
+    const maxParagraphWords = Math.round(190 * fontRatio);
     for (const p of rawParagraphs) {
-      processedParagraphs.push(...splitLongParagraph(p, 200));
+      processedParagraphs.push(...splitLongParagraph(p, maxParagraphWords));
     }
 
     // Accumulate into pages
@@ -242,9 +249,9 @@ export function paginateChapters(chapters: Chapter[], metadata: BookMetadata): R
     for (let pIdx = 0; pIdx < processedParagraphs.length; pIdx++) {
       const pText = processedParagraphs[pIdx];
       const pWords = pText.split(/\s+/).filter(Boolean);
-      const targetWords = isFirstPageOfChapter ? 180 : 250;
+      const targetWords = isFirstPageOfChapter ? targetWordsChapterStart : targetWordsNormal;
 
-      if (wordsOnPage + pWords.length <= targetWords || wordsOnPage < 70) {
+      if (wordsOnPage + pWords.length <= targetWords || wordsOnPage < minWordsCommit) {
         pageParagraphs.push(pText);
         wordsOnPage += pWords.length;
       } else {
