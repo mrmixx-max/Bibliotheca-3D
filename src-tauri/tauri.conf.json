@@ -1,0 +1,72 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Bibliotheca 3D",
+  "version": "1.0.0",
+  "identifier": "com.mrmixx.bibliotheca3d",
+  "build": {
+    "beforeDevCommand": "node node_modules/vite/bin/vite.js --port=3000",
+    "devUrl": "http://localhost:3000",
+    "beforeBuildCommand": "",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "title": "Bibliotheca 3D",
+        "width": 1440,
+        "height": 920,
+        "minWidth": 1024,
+        "minHeight": 680,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "decorations": true,
+        "transparent": false,
+        "backgroundColor": "#100b08",
+        "dragDropEnabled": true,
+        "theme": "Dark",
+        "titleBarStyle": "Visible"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: blob: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; media-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$HOME/**", "$DOCUMENT/**", "$DOWNLOAD/**", "$DESKTOP/**", "$APPDATA/**"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "publisher": "mrmixx-max",
+    "copyright": "Apache-2.0",
+    "category": "Education",
+    "shortDescription": "Fotorealistischer EPUB-Reader mit 3D-Buchansicht",
+    "longDescription": "Bibliotheca 3D liest EPUB-Bücher in einer fotorealistischen 3D-Szene: prozedural erzeugte Holz- und Papiertexturen, Kerzenlicht-Atmosphären, dynamische Seitenblätter-Ansicht. Enthält 2D-Lesemodus, Volltextsuche, farbige Markierungen mit Notizen, Lesezeichen, Bionic Reading, Vorleser und isochrone Töne. Alle Daten bleiben lokal.",
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine",
+        "languages": ["German", "English"],
+        "displayLanguageSelector": true,
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "installer/header.bmp",
+        "sidebarImage": "installer/sidebar.bmp"
+      },
+      "allowDowngrades": false,
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    }
+  },
+  "plugins": {}
+}

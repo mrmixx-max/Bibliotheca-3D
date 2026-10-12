@@ -21,6 +21,7 @@ import { BookmarksModal } from './components/BookmarksModal';
 import { SearchModal } from './components/SearchModal';
 import { exportStandaloneHtmlFile } from './utils/singleFileExporter';
 import { speechReader } from './utils/speechReader';
+import { isDesktop, pickEpubBytes, pickEpubFile, saveTextFile } from './utils/platform';
 import {
   getAudioContext,
   startAmbientSound,
@@ -295,6 +296,23 @@ export default function App() {
     setBook(newBook);
   };
 
+  // Open an EPUB through the native dialog. Falls back to the in-app library
+  // modal in the browser, where no native picker exists.
+  const handleOpenNative = useCallback(async () => {
+    if (!isDesktop()) {
+      setIsLibraryOpen(true);
+      return;
+    }
+    try {
+      const opened = await pickEpubFile();
+      if (!opened) return;
+      const parsed = await parseEpubFile(opened.bytes.buffer as ArrayBuffer);
+      handleLoadCustomBook(parsed);
+    } catch (err) {
+      console.error('EPUB konnte nicht geöffnet werden:', err);
+    }
+  }, []);
+
   const handleAddBookmark = (pageIndex: number, note?: string) => {
     const page = book.pages[pageIndex] || book.pages[0];
     const excerpt = page
@@ -351,9 +369,15 @@ export default function App() {
     speechReader.stop();
   }, [activeBookId]);
 
-  const handleExportHtml = () => {
-    void exportStandaloneHtmlFile(book);
-  };
+  const handleExportHtml = useCallback(() => {
+    void exportStandaloneHtmlFile(book, async (suggestedName, contents) => {
+      // Desktop: let the user choose the destination. Browser: keep the
+      // existing download behaviour.
+      if (isDesktop()) {
+        await saveTextFile(suggestedName, contents);
+      }
+    });
+  }, [book]);
 
   const handleUpdateSettings = useCallback((partial: Partial<ReadingSettings>) => {
     setSettings((prev) => {
@@ -404,6 +428,85 @@ export default function App() {
       window.removeEventListener('drop', handleDrop);
     };
   }, []);
+
+  // Native drop handling: Tauri reports dropped files by path rather than as
+  // File objects, so the webview's own drop event never fires in the shell.
+  useEffect(() => {
+    if (!isDesktop()) return;
+    let unlisten: (() => void) | undefined;
+
+    void (async () => {
+      const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+      unlisten = await getCurrentWebview().onDragDropEvent(async (event) => {
+        if (event.payload.type !== 'drop') return;
+        const first = event.payload.paths?.[0];
+        if (!first || !first.toLowerCase().endsWith('.epub')) return;
+        try {
+          const bytes = await pickEpubBytes(first);
+          if (!bytes) return;
+          const parsed = await parseEpubFile(bytes.buffer as ArrayBuffer);
+          handleLoadCustomBook(parsed);
+        } catch (err) {
+          console.error('Drop EPUB failed:', err);
+        }
+      });
+    })();
+
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
+  // Menu bar actions. The native menu lives in Rust; it forwards clicks here so
+  // the behaviour stays in one place with the rest of the UI state.
+  useEffect(() => {
+    if (!isDesktop()) return;
+    let unlisten: (() => void) | undefined;
+
+    void (async () => {
+      const { listen } = await import('@tauri-apps/api/event');
+      unlisten = await listen<string>('menu-action', (event) => {
+        switch (event.payload) {
+          case 'open_epub':
+            void handleOpenNative();
+            break;
+          case 'open_library':
+            setIsLibraryOpen(true);
+            break;
+          case 'export_html':
+            handleExportHtml();
+            break;
+          case 'open_search':
+            setIsSearchOpen(true);
+            break;
+          case 'open_bookmarks':
+            setIsBookmarksOpen(true);
+            break;
+          case 'open_settings':
+            setIsSettingsOpen(true);
+            break;
+          case 'open_typography':
+            setIsTypographyOpen(true);
+            break;
+          case 'open_speed_reader':
+            setIsSpeedReaderOpen(true);
+            break;
+          case 'toggle_view':
+            setSettings((s) => ({ ...s, viewMode: s.viewMode === '3d' ? '2d' : '3d' }));
+            break;
+          case 'toggle_speech':
+            handleToggleSpeech();
+            break;
+          default:
+            break;
+        }
+      });
+    })();
+
+    return () => {
+      unlisten?.();
+    };
+  }, [handleOpenNative, handleExportHtml, handleToggleSpeech]);
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-stone-950 font-sans select-none">
@@ -474,7 +577,7 @@ export default function App() {
         onOpenSearch={() => setIsSearchOpen(true)}
         bionicReading={settings.bionicReading}
         onToggleBionic={() => setSettings((s) => ({ ...s, bionicReading: !s.bionicReading }))}
-        onUploadEpub={() => setIsLibraryOpen(true)}
+        onUploadEpub={handleOpenNative}
         onExportHtml={handleExportHtml}
         fontFamily={settings.fontFamily}
         fontSize={settings.fontSize}

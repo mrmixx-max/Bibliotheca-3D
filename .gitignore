@@ -10,3 +10,7 @@ coverage/
 # Local test fixtures (malicious EPUB used to verify the sanitizer)
 xss-test.epub
 xss-harness/
+
+# Rust / Tauri build output
+src-tauri/target/
+src-tauri/gen/schemas/

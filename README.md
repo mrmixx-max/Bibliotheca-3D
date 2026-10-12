@@ -40,10 +40,51 @@ Windows-Umgebungen), hilft:
 npm install --legacy-peer-deps --ignore-scripts
 ```
 
+## Desktop-App (Windows)
+
+Neben der Web-Version gibt es einen nativen Desktop-Build auf Tauri 2. Er
+ergänzt das, was der Browser nicht kann:
+
+- **Nativer Datei-Dialog** zum Öffnen von EPUBs (kein Datei-Upload nötig)
+- **Drag & Drop aus dem Explorer** — Tauri liefert den Pfad, die Datei wird
+  direkt gelesen
+- **Speichern-Dialog** für den HTML-Export statt Downloads-Ordner
+- **Menüleiste mit Tastenkürzeln** (Strg+O öffnen, Strg+F Suche, Strg+B
+  Lesezeichen, Strg+D 3D/2D, Strg+R Schnellleser …)
+- **Dunkles Fenster** in der App-Farbe, kein weißes Aufblitzen beim Start
+
+Voraussetzungen: Rust (stable) mit MSVC-Toolchain und das WebView2-Runtime
+(auf Windows 11 vorinstalliert).
+
+```bash
+npm run desktop          # Entwicklungsmodus mit Hot Reload
+npm run desktop:build    # Installer bauen (MSI + NSIS)
+npm run desktop:nsis     # nur NSIS-Setup
+npm run desktop:msi      # nur MSI
+```
+
+Die Installer landen in `src-tauri/target/release/bundle/`. Das Setup
+installiert pro Maschine, bietet Deutsch und Englisch zur Auswahl und zieht
+die WebView2-Runtime nach, falls sie fehlt.
+
+### Icons
+
+`app-icon.svg` ist die Quelle (offenes Buch mit Goldrücken und Lesebändchen).
+Daraus entstehen alle Formate:
+
+```bash
+# SVG -> PNG (Edge headless, kein zusätzliches Werkzeug nötig)
+"$EDGE" --headless=new --window-size=1024,1024 \
+  --default-background-color=00000000 --screenshot=app-icon.png app-icon-render.html
+
+npm run installer-art          # NSIS-Header und -Sidebar (BMP)
+npx tauri icon app-icon.png    # alle Plattform-Icons nach src-tauri/icons
+```
+
 ## Stack
 
 React 19 · TypeScript 7 · Vite 8 · Tailwind 4 · Three.js 0.186 · JSZip ·
-DOMPurify
+DOMPurify · Tauri 2 · Rust
 
 ## Sicherheit
 

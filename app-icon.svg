@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bgGrad" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#2c1d13"/>
+      <stop offset="0.5" stop-color="#160f0a"/>
+      <stop offset="1" stop-color="#090605"/>
+    </linearGradient>
+
+    <radialGradient id="candle" cx="0.5" cy="0.44" r="0.58">
+      <stop offset="0" stop-color="#ffbe6a" stop-opacity="0.32"/>
+      <stop offset="0.5" stop-color="#ff9c3e" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#ff8a2a" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="pageL" x1="1" y1="0.35" x2="0.05" y2="0.75">
+      <stop offset="0" stop-color="#d6c19d"/>
+      <stop offset="0.3" stop-color="#f5ecda"/>
+      <stop offset="1" stop-color="#fefcf7"/>
+    </linearGradient>
+
+    <linearGradient id="pageR" x1="0" y1="0.35" x2="0.95" y2="0.75">
+      <stop offset="0" stop-color="#d6c19d"/>
+      <stop offset="0.3" stop-color="#f5ecda"/>
+      <stop offset="1" stop-color="#fefcf7"/>
+    </linearGradient>
+
+    <linearGradient id="blockL" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e0d1b4"/>
+      <stop offset="1" stop-color="#c4b090"/>
+    </linearGradient>
+
+    <linearGradient id="blockR" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e0d1b4"/>
+      <stop offset="1" stop-color="#c4b090"/>
+    </linearGradient>
+
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fbeaa8"/>
+      <stop offset="0.45" stop-color="#dfba5a"/>
+      <stop offset="1" stop-color="#9c7526"/>
+    </linearGradient>
+
+    <linearGradient id="ribbon" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b32836"/>
+      <stop offset="1" stop-color="#70131c"/>
+    </linearGradient>
+
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="22"/>
+    </filter>
+  </defs>
+
+  <!-- rounded-square background -->
+  <rect width="1024" height="1024" rx="200" fill="url(#bgGrad)"/>
+  <rect width="1024" height="1024" rx="200" fill="url(#candle)"/>
+  <rect x="14" y="14" width="996" height="996" rx="188" fill="none"
+        stroke="#dfba5a" stroke-opacity="0.16" stroke-width="3"/>
+
+  <!-- warm halo behind the book -->
+  <ellipse cx="512" cy="700" rx="360" ry="150" fill="#ff9a3c" opacity="0.16" filter="url(#soft)"/>
+
+  <!-- contact shadow -->
+  <ellipse cx="512" cy="840" rx="336" ry="40" fill="#000000" opacity="0.55" filter="url(#soft)"/>
+
+  <!-- page block (book thickness) -->
+  <path d="M158 726 C 280 764 430 784 512 792 L512 822 C 430 814 280 794 158 756 Z" fill="url(#blockL)"/>
+  <path d="M866 726 C 744 764 594 784 512 792 L512 822 C 594 814 744 794 866 756 Z" fill="url(#blockR)"/>
+
+  <!-- open pages -->
+  <path d="M512 596 C 430 600 280 612 158 640 C 146 660 146 706 158 726 C 280 764 430 784 512 792 Z"
+        fill="url(#pageL)"/>
+  <path d="M512 596 C 594 600 744 612 866 640 C 878 660 878 706 866 726 C 744 764 594 784 512 792 Z"
+        fill="url(#pageR)"/>
+
+  <!-- gold foil on the outer page edges -->
+  <path d="M512 596 C 430 600 280 612 158 640 C 146 660 146 706 158 726"
+        fill="none" stroke="url(#gold)" stroke-width="5" stroke-opacity="0.9" stroke-linecap="round"/>
+  <path d="M512 596 C 594 600 744 612 866 640 C 878 660 878 706 866 726"
+        fill="none" stroke="url(#gold)" stroke-width="5" stroke-opacity="0.9" stroke-linecap="round"/>
+
+  <!-- spine -->
+  <path d="M512 590 L512 798" stroke="url(#gold)" stroke-width="15" stroke-linecap="round"/>
+
+  <!-- ribbon bookmark, offset onto the right page so the spine stays visible -->
+  <path d="M536 598 L574 601 L574 852 L555 828 L536 852 Z" fill="url(#ribbon)"/>
+  <path d="M536 598 L574 601 L574 852 L555 828 L536 852 Z"
+        fill="none" stroke="#4e0c13" stroke-width="2.5" stroke-opacity="0.55"/>
+</svg>

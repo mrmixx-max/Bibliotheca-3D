@@ -12,7 +12,10 @@ import { ParsedBook } from '../types/epub';
  * actually exported, so it is loaded via dynamic import. Vite splits it into
  * its own chunk and the reader itself never pays for it.
  */
-export async function exportStandaloneHtmlFile(book: ParsedBook) {
+export async function exportStandaloneHtmlFile(
+  book: ParsedBook,
+  saveVia?: (suggestedName: string, contents: string) => Promise<unknown>
+) {
   const { THREE_BUNDLE_JS } = await import('./threeBundle.generated');
   // Only metadata + pages are needed by the exported reader. The chapters array
   // holds the full chapter HTML including base64-inlined EPUB images, which the
@@ -430,12 +433,21 @@ export async function exportStandaloneHtmlFile(book: ParsedBook) {
 </body>
 </html>`;
 
+  const fileName = `${book.metadata.title.toLowerCase().replace(/[^a-z0-9]/g, '_')}_3d_reader.html`;
+
+  // Desktop: hand the content to the native save dialog. Browser: trigger a
+  // download with an object URL.
+  if (saveVia) {
+    await saveVia(fileName, htmlContent);
+    return;
+  }
+
   // Trigger download of standalone HTML file
   const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${book.metadata.title.toLowerCase().replace(/[^a-z0-9]/g, '_')}_3d_reader.html`;
+  a.download = fileName;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

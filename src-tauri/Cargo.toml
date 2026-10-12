@@ -1,0 +1,31 @@
+[package]
+name = "bibliotheca-3d"
+version = "1.0.0"
+description = "Bibliotheca 3D — ein fotorealistischer EPUB-Reader mit 3D-Buchansicht"
+authors = ["mrmixx-max"]
+edition = "2021"
+rust-version = "1.77"
+license = "Apache-2.0"
+
+[lib]
+name = "bibliotheca_3d_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Smaller, faster release binary: the reader is I/O- and canvas-bound, so
+# aggressive optimization is free performance for the user.
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
