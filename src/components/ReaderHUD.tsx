@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { AtmosphereTheme, BookMetadata, FontFamily, IsochronicConfig, ReadingSettings, ViewMode } from '../types/epub';
 
 interface ReaderHUDProps {
@@ -20,6 +20,7 @@ interface ReaderHUDProps {
   onOpenTypography: () => void;
   onOpenBookmarks: () => void;
   onOpenSpeedReader: () => void;
+  onOpenSearch: () => void;
   bionicReading: boolean;
   onToggleBionic: () => void;
   onUploadEpub: () => void;
@@ -27,6 +28,9 @@ interface ReaderHUDProps {
   fontFamily: FontFamily;
   fontSize: number;
   onUpdateSettings: (partial: Partial<ReadingSettings>) => void;
+  isSpeaking?: boolean;
+  isSpeakingPaused?: boolean;
+  onToggleSpeech?: () => void;
 }
 
 export const ReaderHUD: React.FC<ReaderHUDProps> = ({
@@ -48,17 +52,39 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
   onOpenTypography,
   onOpenBookmarks,
   onOpenSpeedReader,
+  onOpenSearch,
   bionicReading,
   onToggleBionic,
   onUploadEpub,
   onExportHtml,
   fontFamily,
   fontSize,
-  onUpdateSettings
+  onUpdateSettings,
+  isSpeaking = false,
+  isSpeakingPaused = false,
+  onToggleSpeech
 }) => {
   const currentLeftPage = currentSpreadIndex + 1;
   const currentRightPage = Math.min(currentSpreadIndex + 2, totalPages);
   const percentRead = Math.round((currentRightPage / Math.max(totalPages, 1)) * 100);
+
+  // Global keyboard shortcut for search (Cmd+F / Ctrl+F or '/')
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        onOpenSearch();
+      } else if (e.key === '/' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        onOpenSearch();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onOpenSearch]);
 
   const fontLabels: Record<FontFamily, { label: string; sub: string }> = {
     'source-serif': { label: 'Source Serif 4', sub: 'Moderne Buchschrift' },
@@ -71,7 +97,7 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
 
   return (
     <>
-      {/* Top Bar Contract: 3 zones separated by gap-8 */}
+      {/* Top Bar: Brand, Navigation & Search */}
       <header className="fixed top-0 left-0 right-0 z-30 flex items-center justify-between gap-6 px-6 py-3.5 bg-stone-950/80 backdrop-blur-md border-b border-stone-800/60 select-none">
         {/* Zone 1: Brand Wordmark */}
         <div className="flex items-center gap-3 shrink-0">
@@ -83,7 +109,7 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
           </span>
         </div>
 
-        {/* Zone 2: Clean single-line nav links */}
+        {/* Zone 2: Navigation Links */}
         <nav className="hidden lg:flex items-center gap-4 text-xs font-medium text-stone-300">
           {/* Dedicated 2D / 3D Mode Switcher Button */}
           <button
@@ -103,6 +129,21 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
               )}
             </svg>
             <span>{viewMode === '3d' ? '2D Modus' : '3D Modus'}</span>
+          </button>
+
+          {/* Volltextsuche (Meilenstein 2) */}
+          <button
+            onClick={onOpenSearch}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-900/90 hover:bg-stone-800 border border-stone-800 hover:border-amber-400/50 text-stone-200 hover:text-amber-200 transition-colors cursor-pointer group shadow-sm"
+            title="Volltextsuche im Buch öffnen (Tastenkürzel: Strg+F oder /)"
+          >
+            <svg className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <span className="font-semibold">Suche</span>
+            <span className="text-[10px] text-stone-500 font-mono bg-stone-950 px-1 rounded border border-stone-800">
+              ⌘F
+            </span>
           </button>
 
           {/* Quick Font Family Dropdown */}
@@ -139,7 +180,7 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
             </div>
           </div>
 
-          {/* Quick Font Size Controls: A- / [size] / A+ */}
+          {/* Quick Font Size Controls */}
           <div className="flex items-center bg-stone-900/90 border border-stone-800 rounded-lg p-0.5" title="Schriftgröße anpassen">
             <button
               onClick={() => onUpdateSettings({ fontSize: Math.max(18, fontSize - 2) })}
@@ -164,14 +205,30 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
             </button>
           </div>
 
+          {/* Vorlesefunktion (TTS Audio) */}
+          {onToggleSpeech && (
+            <button
+              onClick={onToggleSpeech}
+              className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+                isSpeaking
+                  ? 'bg-amber-400 text-stone-950 border-amber-300 font-bold shadow-sm'
+                  : 'bg-stone-900/90 text-stone-300 border-stone-800 hover:border-amber-400/40 hover:text-amber-200'
+              }`}
+              title={isSpeaking ? (isSpeakingPaused ? 'Vorlesen fortsetzen' : 'Vorlesen pausieren') : 'Aktuelle Doppelseite vorlesen'}
+            >
+              <svg className={`w-3.5 h-3.5 ${isSpeaking && !isSpeakingPaused ? 'animate-bounce text-stone-950' : 'text-amber-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+              </svg>
+              <span>{isSpeaking ? (isSpeakingPaused ? 'Fortsetzen' : 'Pause') : 'Vorlesen'}</span>
+            </button>
+          )}
+
           <button
-            onClick={onOpenTypography}
+            onClick={onOpenBookmarks}
             className="hover:text-amber-200 transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1"
+            title="Lesezeichen & Text-Markierungen öffnen"
           >
-            <span>Typografie</span>
-            {bionicReading && (
-              <span className="text-[10px] text-amber-400 font-mono font-bold">(Bionic)</span>
-            )}
+            <span>Markierungen</span>
           </button>
           <button
             onClick={onOpenSpeedReader}
@@ -245,8 +302,38 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
             </span>
           </div>
 
-          {/* Quick Readability & Speed-Reading Buttons */}
+          {/* Quick Readability, Search & Tools */}
           <div className="flex items-center gap-1.5 shrink-0">
+            {/* Quick Search Button */}
+            <button
+              onClick={onOpenSearch}
+              title="Volltextsuche im Buch (Strg+F)"
+              className="px-2 py-1 text-[11px] font-medium rounded-md bg-stone-900 border border-stone-800 text-stone-300 hover:text-amber-200 hover:border-amber-400/40 transition-colors flex items-center gap-1 cursor-pointer"
+            >
+              <svg className="w-3 h-3 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <span>Suche</span>
+            </button>
+
+            {/* Quick Speech Button */}
+            {onToggleSpeech && (
+              <button
+                onClick={onToggleSpeech}
+                title={isSpeaking ? 'Vorlesen anhalten' : 'Vorlesen starten'}
+                className={`px-2 py-1 text-[11px] font-medium rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                  isSpeaking
+                    ? 'bg-amber-400 text-stone-950 font-bold shadow-sm'
+                    : 'bg-stone-900 border border-stone-800 text-stone-300 hover:text-amber-200'
+                }`}
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                </svg>
+                <span className="hidden sm:inline">{isSpeaking ? 'Audio' : 'Lesen'}</span>
+              </button>
+            )}
+
             {/* Bionic Reading Quick Toggle */}
             <button
               onClick={onToggleBionic}
@@ -260,19 +347,7 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
               Bionic
             </button>
 
-            {/* Speed-Reader Quick Button */}
-            <button
-              onClick={onOpenSpeedReader}
-              title="RSVP Speed-Reader starten"
-              className="px-2 py-1 text-[11px] font-medium rounded-md bg-stone-900 border border-stone-800 text-amber-300 hover:bg-stone-800 transition-colors flex items-center gap-1 cursor-pointer"
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              <span className="hidden sm:inline">Speed</span>
-            </button>
-
-            {/* Quick Font Size Stepper: A- / [size] / A+ */}
+            {/* Quick Font Size Stepper */}
             <div className="flex items-center bg-stone-900 border border-stone-800 rounded-md p-0.5 text-stone-300">
               <button
                 onClick={() => onUpdateSettings({ fontSize: Math.max(18, fontSize - 2) })}
@@ -298,7 +373,7 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
             </div>
           </div>
 
-          {/* Quick 2D / 3D Mode Switcher (Segmented Control) */}
+          {/* Quick 2D / 3D Mode Switcher */}
           <div className="flex items-center p-0.5 bg-stone-900/90 rounded-lg border border-stone-800 shrink-0">
             <button
               onClick={() => onViewModeChange('2d')}
@@ -323,28 +398,14 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
               }`}
               title="3D Frontale Leseansicht"
             >
-              3D Lesen
-            </button>
-            <button
-              onClick={() => {
-                onViewModeChange('3d');
-                onCameraModeChange('perspective');
-              }}
-              className={`px-2 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer ${
-                viewMode === '3d' && cameraMode === 'perspective'
-                  ? 'bg-amber-200/20 text-amber-200 shadow-sm'
-                  : 'text-stone-400 hover:text-stone-200'
-              }`}
-              title="3D Schrägansicht"
-            >
-              3D Raum
+              3D
             </button>
             <button
               onClick={() => {
                 onViewModeChange('3d');
                 onCameraModeChange('orbit');
               }}
-              className={`px-2 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer ${
+              className={`px-2 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer hidden sm:block ${
                 viewMode === '3d' && cameraMode === 'orbit'
                   ? 'bg-amber-200/20 text-amber-200 shadow-sm'
                   : 'text-stone-400 hover:text-stone-200'
@@ -355,7 +416,7 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
             </button>
           </div>
 
-          {/* Audio & Isochronic Indicator */}
+          {/* Audio Indicator */}
           <div className="flex items-center gap-1.5 shrink-0">
             {isochronic.enabled && (
               <button

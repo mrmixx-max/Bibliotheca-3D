@@ -1,12 +1,15 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState, useRef } from 'react';
 import {
   AtmosphereTheme,
   BookMetadata,
   FontFamily,
+  HighlightColor,
   PaperTonePreset,
-  RenderedPage
+  RenderedPage,
+  TextHighlight
 } from '../types/epub';
 import { playPageTurnSound } from '../utils/audioEffects';
+import { speechReader } from '../utils/speechReader';
 
 interface Book2DViewProps {
   metadata: BookMetadata;
@@ -25,6 +28,10 @@ interface Book2DViewProps {
   readingZoom: number;
   soundEnabled: boolean;
   onSwitchTo3D: () => void;
+  highlights?: TextHighlight[];
+  onAddHighlight?: (highlight: Omit<TextHighlight, 'id' | 'timestamp'>) => void;
+  searchHighlightTerm?: string;
+  onClearSearchHighlight?: () => void;
 }
 
 export const Book2DView: React.FC<Book2DViewProps> = ({
@@ -42,11 +49,28 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
   onToggleTwoPageSpread,
   readingZoom,
   soundEnabled,
-  onSwitchTo3D
+  onSwitchTo3D,
+  highlights = [],
+  onAddHighlight,
+  searchHighlightTerm,
+  onClearSearchHighlight
 }) => {
   // Safe page retrieval
   const leftPage = pages[currentSpreadIndex] || null;
   const rightPage = twoPageSpread ? pages[currentSpreadIndex + 1] || null : null;
+
+  // Floating text selection toolbar state
+  const [selectionToolbar, setSelectionToolbar] = useState<{
+    x: number;
+    y: number;
+    text: string;
+    pageIndex: number;
+    chapterTitle: string;
+  } | null>(null);
+
+  const [notePromptOpen, setNotePromptOpen] = useState(false);
+  const [pendingColor, setPendingColor] = useState<HighlightColor>('amber');
+  const [noteInput, setNoteInput] = useState('');
 
   // Paper styling
   const paperColors: Record<PaperTonePreset, { bg: string; text: string; border: string; subText: string }> = {
@@ -117,6 +141,8 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
       if (soundEnabled) {
         playPageTurnSound(0.55);
       }
+      setSelectionToolbar(null);
+      setNotePromptOpen(false);
       onTurnPage(direction);
     },
     [onTurnPage, soundEnabled]
@@ -140,8 +166,96 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleTurn]);
 
-  // Render text with optional Bionic Reading bold anchors
-  const renderFormattedParagraph = (pText: string, isFirstInChapter = false) => {
+  // Handle text selection on mouse up
+  const handleMouseUp = (pageIndex: number, chapterTitle: string) => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) {
+      if (!notePromptOpen) {
+        setSelectionToolbar(null);
+      }
+      return;
+    }
+
+    const selectedText = sel.toString().trim();
+    if (selectedText.length < 2) {
+      if (!notePromptOpen) setSelectionToolbar(null);
+      return;
+    }
+
+    try {
+      const range = sel.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      setSelectionToolbar({
+        x: Math.max(10, rect.left + rect.width / 2),
+        y: Math.max(10, rect.top - 12),
+        text: selectedText,
+        pageIndex,
+        chapterTitle
+      });
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleApplyHighlight = (color: HighlightColor) => {
+    if (!selectionToolbar || !onAddHighlight) return;
+    onAddHighlight({
+      pageIndex: selectionToolbar.pageIndex,
+      text: selectionToolbar.text,
+      color,
+      chapterTitle: selectionToolbar.chapterTitle
+    });
+    window.getSelection()?.removeAllRanges();
+    setSelectionToolbar(null);
+    setNotePromptOpen(false);
+  };
+
+  const handleSaveWithNote = () => {
+    if (!selectionToolbar || !onAddHighlight) return;
+    onAddHighlight({
+      pageIndex: selectionToolbar.pageIndex,
+      text: selectionToolbar.text,
+      color: pendingColor,
+      note: noteInput.trim() || undefined,
+      chapterTitle: selectionToolbar.chapterTitle
+    });
+    window.getSelection()?.removeAllRanges();
+    setSelectionToolbar(null);
+    setNotePromptOpen(false);
+    setNoteInput('');
+  };
+
+  const handleSpeakSelection = () => {
+    if (!selectionToolbar) return;
+    speechReader.speak(selectionToolbar.text);
+    setSelectionToolbar(null);
+  };
+
+  const handleCopySelection = () => {
+    if (!selectionToolbar) return;
+    navigator.clipboard.writeText(selectionToolbar.text);
+    setSelectionToolbar(null);
+  };
+
+  // Color classes for highlights
+  const highlightStyles: Record<HighlightColor, string> = {
+    amber: 'bg-amber-300/40 text-amber-950 dark:text-amber-100 rounded px-0.5 shadow-sm',
+    emerald: 'bg-emerald-300/40 text-emerald-950 dark:text-emerald-100 rounded px-0.5 shadow-sm',
+    rose: 'bg-rose-300/40 text-rose-950 dark:text-rose-100 rounded px-0.5 shadow-sm',
+    sky: 'bg-sky-300/40 text-sky-950 dark:text-sky-100 rounded px-0.5 shadow-sm'
+  };
+
+  // Render text with highlights, search terms, and optional Bionic Reading
+  const renderFormattedParagraph = (pText: string, pageIndex: number, isFirstInChapter = false) => {
+    // Current highlights on this page
+    const pageHighlights = highlights.filter((h) => h.pageIndex === pageIndex);
+
+    // If search term is active, highlight search term first
+    const hasSearchMatch =
+      searchHighlightTerm &&
+      searchHighlightTerm.trim().length >= 2 &&
+      pText.toLowerCase().includes(searchHighlightTerm.trim().toLowerCase());
+
     if (isFirstInChapter && pText.length > 20) {
       const dropCap = pText[0];
       const rest = pText.slice(1).trim();
@@ -154,16 +268,65 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
           >
             {dropCap}
           </span>
-          {bionicReading ? renderBionicWords(rest) : rest}
+          {renderTextWithHighlightsAndBionic(rest, pageHighlights, searchHighlightTerm)}
         </p>
       );
     }
 
     return (
       <p className="leading-relaxed mb-4 text-justify" style={{ textIndent: '1.8em' }}>
-        {bionicReading ? renderBionicWords(pText) : pText}
+        {renderTextWithHighlightsAndBionic(pText, pageHighlights, searchHighlightTerm)}
       </p>
     );
+  };
+
+  const renderTextWithHighlightsAndBionic = (
+    text: string,
+    pageHighlights: TextHighlight[],
+    searchTerm?: string
+  ) => {
+    // If search term matches
+    if (searchTerm && searchTerm.trim().length >= 2 && text.toLowerCase().includes(searchTerm.trim().toLowerCase())) {
+      const parts = text.split(new RegExp(`(${searchTerm.trim()})`, 'gi'));
+      return parts.map((part, pI) =>
+        part.toLowerCase() === searchTerm.trim().toLowerCase() ? (
+          <mark
+            key={pI}
+            className="bg-amber-400 text-stone-950 font-bold px-1 py-0.5 rounded shadow-sm ring-1 ring-amber-500/60 animate-pulse"
+          >
+            {part}
+          </mark>
+        ) : (
+          <span key={pI}>{bionicReading ? renderBionicWords(part) : part}</span>
+        )
+      );
+    }
+
+    // Check for saved user highlights in this paragraph
+    for (const hl of pageHighlights) {
+      if (text.includes(hl.text)) {
+        const parts = text.split(hl.text);
+        return (
+          <span>
+            {parts.map((part, pI) => (
+              <React.Fragment key={pI}>
+                {pI > 0 && (
+                  <mark
+                    className={`${highlightStyles[hl.color]} cursor-pointer`}
+                    title={hl.note ? `Notiz: ${hl.note}` : 'Markierte Textstelle'}
+                  >
+                    {hl.text}
+                  </mark>
+                )}
+                {bionicReading ? renderBionicWords(part) : part}
+              </React.Fragment>
+            ))}
+          </span>
+        );
+      }
+    }
+
+    return bionicReading ? renderBionicWords(text) : text;
   };
 
   const renderBionicWords = (text: string) => {
@@ -208,7 +371,11 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
     return list;
   };
 
-  const renderSinglePageContent = (page: RenderedPage | null, isLeft: boolean) => {
+  const renderSinglePageContent = (
+    page: RenderedPage | null,
+    isLeft: boolean,
+    pageIdx: number
+  ) => {
     if (!page) {
       return (
         <div className="flex-1 flex items-center justify-center text-stone-500/40 italic font-serif select-none">
@@ -226,9 +393,15 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
     );
 
     return (
-      <div className="flex-1 flex flex-col justify-between p-6 sm:p-10 md:p-12 relative overflow-hidden select-text">
+      <div
+        className="flex-1 flex flex-col justify-between p-6 sm:p-10 md:p-12 relative overflow-hidden select-text"
+        onMouseUp={() => handleMouseUp(pageIdx, page.chapterTitle)}
+      >
         {/* Running Header */}
-        <header className="flex items-center justify-between pb-3 mb-6 border-b border-stone-400/20 text-[11px] uppercase tracking-widest font-serif italic select-none" style={{ color: activePaper.subText }}>
+        <header
+          className="flex items-center justify-between pb-3 mb-6 border-b border-stone-400/20 text-[11px] uppercase tracking-widest font-serif italic select-none"
+          style={{ color: activePaper.subText }}
+        >
           <span>{isLeft ? page.bookTitle : page.chapterTitle}</span>
           <span className="font-mono text-[10px] tracking-normal not-italic">{page.pageNumber}</span>
         </header>
@@ -259,14 +432,17 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
           >
             {paragraphs.map((p, idx) => (
               <React.Fragment key={idx}>
-                {renderFormattedParagraph(p, isChapterStart && idx === 0)}
+                {renderFormattedParagraph(p, pageIdx, isChapterStart && idx === 0)}
               </React.Fragment>
             ))}
           </div>
         </div>
 
         {/* Footer */}
-        <footer className="pt-4 mt-4 border-t border-stone-400/15 flex items-center justify-center text-xs font-mono tabular-nums select-none" style={{ color: activePaper.subText }}>
+        <footer
+          className="pt-4 mt-4 border-t border-stone-400/15 flex items-center justify-center text-xs font-mono tabular-nums select-none"
+          style={{ color: activePaper.subText }}
+        >
           <span>— {page.pageNumber} —</span>
         </footer>
       </div>
@@ -283,6 +459,27 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
         className="absolute inset-0 pointer-events-none transition-all duration-700"
         style={{ backgroundImage: activeAtmosphere.glow }}
       />
+
+      {/* Floating Search Match Banner if search term is active */}
+      {searchHighlightTerm && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-amber-400/90 text-stone-950 shadow-lg text-xs font-medium backdrop-blur">
+          <svg className="w-3.5 h-3.5 text-stone-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <span>Suchtreffer hervorgehoben: <strong>&quot;{searchHighlightTerm}&quot;</strong></span>
+          {onClearSearchHighlight && (
+            <button
+              onClick={onClearSearchHighlight}
+              className="ml-1 p-0.5 hover:bg-black/10 rounded-full cursor-pointer"
+              title="Suchmarkierung ausblenden"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 2D Reading View Header Bar */}
       <div className="absolute top-16 left-0 right-0 z-20 flex items-center justify-between px-6 py-2 max-w-5xl mx-auto w-full pointer-events-auto">
@@ -326,7 +523,7 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
       >
         {/* Left Page */}
         <div className="flex-1 flex flex-col relative border-r border-stone-400/15">
-          {renderSinglePageContent(leftPage, true)}
+          {renderSinglePageContent(leftPage, true, currentSpreadIndex)}
         </div>
 
         {/* Center Spine Crease (when dual-page spread) */}
@@ -340,7 +537,7 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
         {/* Right Page (if twoPageSpread) */}
         {twoPageSpread && (
           <div className="flex-1 flex flex-col relative">
-            {renderSinglePageContent(rightPage, false)}
+            {renderSinglePageContent(rightPage, false, currentSpreadIndex + 1)}
           </div>
         )}
 
@@ -382,6 +579,135 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
       >
         ›
       </button>
+
+      {/* Floating Highlighter / Selection Popover Toolbar */}
+      {selectionToolbar && (
+        <div
+          className="fixed z-50 -translate-x-1/2 -translate-y-full mb-2 bg-stone-900/95 border border-stone-700/80 rounded-2xl shadow-2xl p-1.5 flex flex-col gap-1.5 text-stone-200 backdrop-blur-md pointer-events-auto"
+          style={{
+            left: `${selectionToolbar.x}px`,
+            top: `${selectionToolbar.y}px`
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {!notePromptOpen ? (
+            <div className="flex items-center gap-1.5">
+              {/* Color swatches */}
+              <div className="flex items-center gap-1 pr-1.5 border-r border-stone-700/60">
+                <button
+                  onClick={() => handleApplyHighlight('amber')}
+                  className="w-5 h-5 rounded-full bg-amber-400 hover:scale-110 transition-transform shadow-sm cursor-pointer"
+                  title="Gold markieren"
+                />
+                <button
+                  onClick={() => handleApplyHighlight('emerald')}
+                  className="w-5 h-5 rounded-full bg-emerald-400 hover:scale-110 transition-transform shadow-sm cursor-pointer"
+                  title="Smaragdgrün markieren"
+                />
+                <button
+                  onClick={() => handleApplyHighlight('rose')}
+                  className="w-5 h-5 rounded-full bg-rose-400 hover:scale-110 transition-transform shadow-sm cursor-pointer"
+                  title="Korallrosa markieren"
+                />
+                <button
+                  onClick={() => handleApplyHighlight('sky')}
+                  className="w-5 h-5 rounded-full bg-sky-400 hover:scale-110 transition-transform shadow-sm cursor-pointer"
+                  title="Azurblau markieren"
+                />
+              </div>
+
+              {/* Add Note Button */}
+              <button
+                onClick={() => {
+                  setPendingColor('amber');
+                  setNotePromptOpen(true);
+                }}
+                className="px-2 py-1 text-xs hover:bg-stone-800 rounded-lg text-stone-300 hover:text-amber-200 transition-colors cursor-pointer flex items-center gap-1"
+                title="Notiz zum Zitat anheften"
+              >
+                <svg className="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                <span>Notiz</span>
+              </button>
+
+              {/* Speak Selection */}
+              <button
+                onClick={handleSpeakSelection}
+                className="p-1 hover:bg-stone-800 rounded-lg text-stone-300 hover:text-amber-200 transition-colors cursor-pointer"
+                title="Ausgewählten Text vorlesen"
+              >
+                <svg className="w-3.5 h-3.5 text-amber-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                </svg>
+              </button>
+
+              {/* Copy Selection */}
+              <button
+                onClick={handleCopySelection}
+                className="p-1 hover:bg-stone-800 rounded-lg text-stone-300 hover:text-amber-200 transition-colors cursor-pointer"
+                title="In Zwischenablage kopieren"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              </button>
+
+              {/* Close Toolbar */}
+              <button
+                onClick={() => setSelectionToolbar(null)}
+                className="p-1 text-stone-400 hover:text-stone-100 rounded-lg cursor-pointer"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2 p-1 min-w-[240px]">
+              <div className="flex items-center justify-between text-[11px] text-stone-400">
+                <span>Notiz zum Zitat:</span>
+                <div className="flex items-center gap-1">
+                  {(['amber', 'emerald', 'rose', 'sky'] as HighlightColor[]).map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => setPendingColor(c)}
+                      className={`w-3.5 h-3.5 rounded-full transition-transform ${
+                        c === 'amber' ? 'bg-amber-400' : c === 'emerald' ? 'bg-emerald-400' : c === 'rose' ? 'bg-rose-400' : 'bg-sky-400'
+                      } ${pendingColor === c ? 'ring-2 ring-white scale-110' : 'opacity-70'}`}
+                    />
+                  ))}
+                </div>
+              </div>
+              <input
+                type="text"
+                autoFocus
+                placeholder="Gedanke oder Anmerkung..."
+                value={noteInput}
+                onChange={(e) => setNoteInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveWithNote();
+                }}
+                className="w-full px-2.5 py-1.5 bg-stone-950 border border-stone-700 rounded-lg text-xs text-stone-100 focus:outline-none focus:border-amber-400"
+              />
+              <div className="flex items-center justify-end gap-1.5 pt-1">
+                <button
+                  onClick={() => setNotePromptOpen(false)}
+                  className="px-2 py-1 text-[11px] text-stone-400 hover:text-stone-200 cursor-pointer"
+                >
+                  Zurück
+                </button>
+                <button
+                  onClick={handleSaveWithNote}
+                  className="px-2.5 py-1 text-[11px] bg-amber-400 text-stone-950 font-bold rounded-md hover:bg-amber-300 transition-colors cursor-pointer"
+                >
+                  Speichern
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

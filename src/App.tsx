@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import confetti from 'canvas-confetti';
-import { Bookmark, ParsedBook, ReadingSettings } from './types/epub';
+import { Bookmark, ParsedBook, ReadingSettings, TextHighlight } from './types/epub';
 import { getParsedSampleBook } from './utils/sampleBooks';
 import { paginateChapters, parseEpubFile } from './utils/epubParser';
 import { Book3DScene } from './components/Book3DScene';
@@ -17,7 +17,9 @@ import { AtmosphereSettingsModal } from './components/AtmosphereSettingsModal';
 import { TypographySettingsModal } from './components/TypographySettingsModal';
 import { SpeedReaderModal } from './components/SpeedReaderModal';
 import { BookmarksModal } from './components/BookmarksModal';
+import { SearchModal } from './components/SearchModal';
 import { exportStandaloneHtmlFile } from './utils/singleFileExporter';
+import { speechReader } from './utils/speechReader';
 import {
   getAudioContext,
   startAmbientSound,
@@ -32,6 +34,7 @@ import {
 
 const STORAGE_KEY_BOOKMARKS = 'bibliotheca_3d_bookmarks_v1';
 const STORAGE_KEY_SETTINGS = 'bibliotheca_3d_settings_v1';
+const STORAGE_KEY_HIGHLIGHTS = 'bibliotheca_3d_highlights_v1';
 
 export default function App() {
   // Current active parsed book
@@ -39,6 +42,10 @@ export default function App() {
 
   // Reading spread index (even number: 0, 2, 4...)
   const [currentSpreadIndex, setCurrentSpreadIndex] = useState(0);
+
+  // Search and highlighting state (Meilenstein 2)
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchHighlightTerm, setSearchHighlightTerm] = useState('');
 
   // Settings
   const [settings, setSettings] = useState<ReadingSettings>(() => {
@@ -96,6 +103,29 @@ export default function App() {
     return [];
   });
 
+  // Text Highlights (Meilenstein 2)
+  const [highlights, setHighlights] = useState<TextHighlight[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_HIGHLIGHTS);
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // ignore
+    }
+    return [];
+  });
+
+  // Text-to-Speech state
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isSpeakingPaused, setIsSpeakingPaused] = useState(false);
+
+  useEffect(() => {
+    const unsub = speechReader.subscribe((speaking, paused) => {
+      setIsSpeaking(speaking);
+      setIsSpeakingPaused(paused);
+    });
+    return unsub;
+  }, []);
+
   // Modal states
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isTOCOpen, setIsTOCOpen] = useState(false);
@@ -121,6 +151,15 @@ export default function App() {
       // ignore
     }
   }, [bookmarks]);
+
+  // Persist highlights
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_HIGHLIGHTS, JSON.stringify(highlights));
+    } catch {
+      // ignore
+    }
+  }, [highlights]);
 
   // Audio ambience controller
   useEffect(() => {
@@ -263,6 +302,33 @@ export default function App() {
     setBookmarks((prev) => prev.filter((b) => b.id !== id));
   };
 
+  const handleAddHighlight = (hl: Omit<TextHighlight, 'id' | 'timestamp'>) => {
+    const newHl: TextHighlight = {
+      ...hl,
+      id: 'hl_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+      timestamp: Date.now()
+    };
+    setHighlights((prev) => [newHl, ...prev]);
+  };
+
+  const handleDeleteHighlight = (id: string) => {
+    setHighlights((prev) => prev.filter((h) => h.id !== id));
+  };
+
+  const handleToggleSpeech = useCallback(() => {
+    const leftP = book.pages[currentSpreadIndex];
+    const rightP = book.pages[currentSpreadIndex + 1];
+    const combinedText = [leftP?.htmlContent, rightP?.htmlContent].filter(Boolean).join(' ');
+    speechReader.toggle(combinedText, () => {
+      handleTurnPage('next');
+    });
+  }, [book.pages, currentSpreadIndex, handleTurnPage]);
+
+  // Clean up speech on book change
+  useEffect(() => {
+    speechReader.stop();
+  }, [book.metadata.title]);
+
   const handleExportHtml = () => {
     exportStandaloneHtmlFile(book);
   };
@@ -356,6 +422,10 @@ export default function App() {
           readingZoom={settings.readingZoom}
           soundEnabled={settings.soundEnabled}
           onSwitchTo3D={() => setSettings((s) => ({ ...s, viewMode: '3d' }))}
+          highlights={highlights}
+          onAddHighlight={handleAddHighlight}
+          searchHighlightTerm={searchHighlightTerm}
+          onClearSearchHighlight={() => setSearchHighlightTerm('')}
         />
       )}
 
@@ -379,6 +449,7 @@ export default function App() {
         onOpenTypography={() => setIsTypographyOpen(true)}
         onOpenBookmarks={() => setIsBookmarksOpen(true)}
         onOpenSpeedReader={() => setIsSpeedReaderOpen(true)}
+        onOpenSearch={() => setIsSearchOpen(true)}
         bionicReading={settings.bionicReading}
         onToggleBionic={() => setSettings((s) => ({ ...s, bionicReading: !s.bionicReading }))}
         onUploadEpub={() => setIsLibraryOpen(true)}
@@ -386,6 +457,9 @@ export default function App() {
         fontFamily={settings.fontFamily}
         fontSize={settings.fontSize}
         onUpdateSettings={handleUpdateSettings}
+        isSpeaking={isSpeaking}
+        isSpeakingPaused={isSpeakingPaused}
+        onToggleSpeech={handleToggleSpeech}
       />
 
       {/* Modals */}
@@ -435,11 +509,22 @@ export default function App() {
         isOpen={isBookmarksOpen}
         onClose={() => setIsBookmarksOpen(false)}
         bookmarks={bookmarks}
+        highlights={highlights}
         onAddBookmark={handleAddBookmark}
         onDeleteBookmark={handleDeleteBookmark}
+        onDeleteHighlight={handleDeleteHighlight}
         onJumpToBookmark={handleSelectPage}
         currentSpreadIndex={currentSpreadIndex}
         currentPage={book.pages[currentSpreadIndex] || null}
+      />
+
+      <SearchModal
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        book={book}
+        currentSpreadIndex={currentSpreadIndex}
+        onSelectPage={handleSelectPage}
+        onHighlightTerm={(term) => setSearchHighlightTerm(term)}
       />
     </div>
   );

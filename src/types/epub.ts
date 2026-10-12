@@ -109,3 +109,24 @@ export interface ReadingSettings {
   ambientVolume: number;
   isochronic: IsochronicConfig;
 }
+
+export type HighlightColor = 'amber' | 'emerald' | 'rose' | 'sky';
+
+export interface TextHighlight {
+  id: string;
+  pageIndex: number;
+  text: string;
+  color: HighlightColor;
+  note?: string;
+  timestamp: number;
+  chapterTitle?: string;
+}
+
+export interface SearchResultItem {
+  pageIndex: number;
+  chapterIndex: number;
+  chapterTitle: string;
+  pageNumber: number;
+  matchSnippet: string;
+  exactTerm: string;
+}
