@@ -31,10 +31,11 @@ interface Book3DSceneProps {
   fontSize?: number;
   lineHeight?: number;
   paperTonePreset?: PaperTonePreset;
-  readingZoom?: number;
-  backgroundTexture?: BackgroundTexture;
-  customTextColor?: string;
-}
+    readingZoom?: number;
+    backgroundTexture?: BackgroundTexture;
+    customTextColor?: string;
+    fitToPage?: boolean;
+  }
 
 const PAGE_WIDTH = 2.4;
 const PAGE_HEIGHT = 3.4;
@@ -53,10 +54,11 @@ export const Book3DScene: React.FC<Book3DSceneProps> = ({
   fontSize = 26,
   lineHeight = 44,
   paperTonePreset = 'creme',
-  readingZoom = 1.0,
-  backgroundTexture = 'none',
-  customTextColor = ''
-}) => {
+    readingZoom = 1.0,
+    backgroundTexture = 'none',
+    customTextColor = '',
+    fitToPage = false
+  }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);

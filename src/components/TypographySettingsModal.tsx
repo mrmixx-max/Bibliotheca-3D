@@ -297,6 +297,47 @@ export const TypographySettingsModal: React.FC<TypographySettingsModalProps> = (
             </div>
           </div>
 
+          {/* Fit to page toggle */}
+          <div>
+            <div className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2.5">
+              Anzeigemodus
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => onUpdateSettings({ fitToPage: true })}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  settings.fitToPage
+                    ? 'border-amber-400 bg-amber-400/10 text-amber-200 ring-1 ring-amber-400/30'
+                    : 'border-stone-800 bg-stone-900/60 text-stone-400 hover:text-stone-200 hover:border-stone-700'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-xs">Passend</span>
+                  <span className="text-[10px] font-mono opacity-80">Kein Scrollen</span>
+                </div>
+                <p className="text-[10px] opacity-75 mt-1 leading-relaxed">
+                  Seite füllt den Bildschrift – wie Kindle Paperwhite
+                </p>
+              </button>
+              <button
+                onClick={() => onUpdateSettings({ fitToPage: false })}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  !settings.fitToPage
+                    ? 'border-amber-400 bg-amber-400/10 text-amber-200 ring-1 ring-amber-400/30'
+                    : 'border-stone-800 bg-stone-900/60 text-stone-400 hover:text-stone-200 hover:border-stone-700'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-xs">Scrollbar</span>
+                  <span className="text-[10px] font-mono opacity-80">Klassisch</span>
+                </div>
+                <p className="text-[10px] opacity-75 mt-1 leading-relaxed">
+                  Lange Texte scrollbar wie ein Webseiten-Leser
+                </p>
+              </button>
+            </div>
+          </div>
+
           {/* Font Family */}
           <div>
             <div className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2.5">

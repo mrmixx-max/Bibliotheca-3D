@@ -55,6 +55,7 @@ export default function App() {
     const defaults: ReadingSettings = {
       viewMode: '3d',
       twoPageSpread2D: true,
+      fitToPage: true,
       fontFamily: 'source-serif',
       fontSize: 28,
       lineHeight: 46,
@@ -671,6 +672,7 @@ export default function App() {
           lineHeight={settings.lineHeight}
           paperTonePreset={settings.paperTonePreset}
           readingZoom={settings.readingZoom}
+          fitToPage={settings.fitToPage}
           backgroundTexture={settings.backgroundTexture}
           customTextColor={settings.customTextColor}
         />
@@ -692,6 +694,7 @@ export default function App() {
             setSettings((s) => ({ ...s, twoPageSpread2D: !s.twoPageSpread2D }))
           }
           readingZoom={settings.readingZoom}
+          fitToPage={settings.fitToPage}
           soundEnabled={settings.soundEnabled}
           onSwitchTo3D={() => setSettings((s) => ({ ...s, viewMode: '3d' }))}
           highlights={activeHighlights}

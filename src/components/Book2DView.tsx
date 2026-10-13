@@ -27,6 +27,7 @@ interface Book2DViewProps {
   bionicReading: boolean;
   twoPageSpread: boolean;
   onToggleTwoPageSpread: () => void;
+  fitToPage: boolean;
   readingZoom: number;
   soundEnabled: boolean;
   onSwitchTo3D: () => void;
@@ -51,6 +52,7 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
   bionicReading,
   twoPageSpread,
   onToggleTwoPageSpread,
+  fitToPage,
   readingZoom,
   soundEnabled,
   onSwitchTo3D,
@@ -77,6 +79,50 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
   const [notePromptOpen, setNotePromptOpen] = useState(false);
   const [pendingColor, setPendingColor] = useState<HighlightColor>('amber');
   const [noteInput, setNoteInput] = useState('');
+
+  // Measure the available reading area so the page can be scaled to fit it
+  // exactly (Kindle Paperwhite behaviour: no scrolling, only page turns).
+  const pageAreaRef = useRef<HTMLDivElement>(null);
+  const leftPageContentRef = useRef<HTMLDivElement>(null);
+  const [fitScale, setFitScale] = useState(1);
+
+  useEffect(() => {
+    if (!fitToPage) {
+      setFitScale(1);
+      return;
+    }
+    const container = pageAreaRef.current;
+    const content = leftPageContentRef.current;
+    if (!container || !content) return;
+
+    const computeScale = () => {
+      const cw = container.clientWidth;
+      const ch = container.clientHeight;
+      const naturalW = content.scrollWidth;
+      const naturalH = content.scrollHeight;
+      if (naturalW === 0 || naturalH === 0 || cw === 0 || ch === 0) return;
+
+      // Scale so the natural content size fits the container exactly.
+      const scale = Math.min(cw / naturalW, ch / naturalH);
+      setFitScale(Math.min(scale, 1)); // never enlarge beyond 100%
+    };
+
+    // Initial measure after layout settles
+    const raf = requestAnimationFrame(computeScale);
+    const timer = window.setTimeout(computeScale, 50);
+    const timer2 = window.setTimeout(computeScale, 200);
+
+    const ro = new ResizeObserver(computeScale);
+    ro.observe(container);
+    ro.observe(content);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+      clearTimeout(timer2);
+      ro.disconnect();
+    };
+  }, [fitToPage, leftPage, twoPageSpread, fontSize, lineHeight]);
 
   // Paper styling
   const paperColors: Record<PaperTonePreset, { bg: string; text: string; border: string; subText: string }> = {
@@ -407,12 +453,71 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
       page.htmlContent.includes('<h2')
     );
 
+    // Paper Content Body
+    const body = fitToPage ? (
+      <div className="flex-1 min-h-0 flex flex-col justify-center overflow-hidden">
+        {isChapterStart && page.chapterTitle && (
+          <div className="text-center mb-6 pb-4 border-b border-stone-400/20 select-none">
+            <h2
+              className="text-xl sm:text-2xl font-bold tracking-wide"
+              style={{ fontFamily: '"Cinzel", "Cormorant Garamond", serif', color: activeTextColor }}
+            >
+              {page.chapterTitle}
+            </h2>
+            <div className="w-16 h-0.5 mx-auto mt-3 bg-amber-500/40 rounded-full" />
+          </div>
+        )}
+        <div
+          style={{
+            fontFamily: activeFont,
+            fontSize: `${fontSize}px`,
+            lineHeight: `${lineHeight}px`,
+            color: activeTextColor
+          }}
+        >
+          {paragraphs.map((p, idx) => (
+            <React.Fragment key={idx}>
+              {renderFormattedParagraph(p, pageIdx, isChapterStart && idx === 0)}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+    ) : (
+      <div className="flex-1 overflow-y-auto pr-1">
+        {isChapterStart && page.chapterTitle && (
+          <div className="text-center my-6 pb-4 border-b border-stone-400/20 select-none">
+            <h2
+              className="text-xl sm:text-2xl font-bold tracking-wide"
+              style={{ fontFamily: '"Cinzel", "Cormorant Garamond", serif', color: activeTextColor }}
+            >
+              {page.chapterTitle}
+            </h2>
+            <div className="w-16 h-0.5 mx-auto mt-3 bg-amber-500/40 rounded-full" />
+          </div>
+        )}
+        <div
+          style={{
+            fontFamily: activeFont,
+            fontSize: `${fontSize}px`,
+            lineHeight: `${lineHeight}px`,
+            color: activeTextColor
+          }}
+        >
+          {paragraphs.map((p, idx) => (
+            <React.Fragment key={idx}>
+              {renderFormattedParagraph(p, pageIdx, isChapterStart && idx === 0)}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+    );
+
     return (
       <div
         className="flex-1 flex flex-col justify-between p-6 sm:p-10 md:p-12 relative overflow-hidden select-text"
+        style={{ minHeight: 0 }}
         onMouseUp={() => handleMouseUp(pageIdx, page.chapterTitle)}
       >
-        {/* Running Header */}
         <header
           className="flex items-center justify-between pb-3 mb-6 border-b border-stone-400/20 text-[11px] uppercase tracking-widest font-serif italic select-none"
           style={{ color: activePaper.subText }}
@@ -421,39 +526,8 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
           <span className="font-mono text-[10px] tracking-normal not-italic">{page.pageNumber}</span>
         </header>
 
-        {/* Page Content Body */}
-        <div className="flex-1 overflow-y-auto pr-1">
-          {/* Chapter Title Banner on Chapter Start */}
-          {isChapterStart && page.chapterTitle && (
-            <div className="text-center my-6 pb-4 border-b border-stone-400/20 select-none">
-              <h2
-                className="text-xl sm:text-2xl font-bold tracking-wide"
-                style={{ fontFamily: '"Cinzel", "Cormorant Garamond", serif', color: activeTextColor }}
-              >
-                {page.chapterTitle}
-              </h2>
-              <div className="w-16 h-0.5 mx-auto mt-3 bg-amber-500/40 rounded-full" />
-            </div>
-          )}
+        {body}
 
-          {/* Paragraphs */}
-          <div
-            style={{
-              fontFamily: activeFont,
-              fontSize: `${fontSize}px`,
-              lineHeight: `${lineHeight}px`,
-              color: activeTextColor
-            }}
-          >
-            {paragraphs.map((p, idx) => (
-              <React.Fragment key={idx}>
-                {renderFormattedParagraph(p, pageIdx, isChapterStart && idx === 0)}
-              </React.Fragment>
-            ))}
-          </div>
-        </div>
-
-        {/* Footer */}
         <footer
           className="pt-4 mt-4 border-t border-stone-400/15 flex items-center justify-center text-xs font-mono tabular-nums select-none"
           style={{ color: activePaper.subText }}
@@ -541,16 +615,32 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
 
       {/* Main Reading Spread Container */}
       <main
-        className="relative z-10 w-[95vw] max-w-5xl h-[78vh] max-h-[880px] rounded-2xl shadow-2xl transition-all duration-300 flex overflow-hidden border pointer-events-auto"
+        ref={pageAreaRef}
+        className={`relative z-10 w-[95vw] max-w-5xl ${
+          fitToPage ? 'h-full max-h-none p-2' : 'h-[78vh] max-h-[880px]'
+        } rounded-2xl shadow-2xl transition-all duration-300 flex overflow-hidden border pointer-events-auto`}
         style={{
           backgroundColor: activePaper.bg,
           borderColor: activePaper.border,
           boxShadow: '0 24px 60px rgba(0,0,0,0.65), 0 2px 8px rgba(0,0,0,0.2)',
-          transform: `scale(${readingZoom})`
+          transform: fitToPage ? undefined : `scale(${readingZoom})`
         }}
       >
-        {/* Left Page */}
-        <div className="flex-1 flex flex-col relative border-r border-stone-400/15">
+        {/* Left Page — scaled to fit the available area in fit-to-page mode */}
+        <div
+          ref={leftPageContentRef}
+          className="flex-1 flex flex-col relative border-r border-stone-400/15"
+          style={
+            fitToPage && fitScale > 0
+              ? {
+                  transform: `scale(${fitScale})`,
+                  transformOrigin: 'top left',
+                  width: `${100 / fitScale}%`,
+                  flex: 'none'
+                }
+              : undefined
+          }
+        >
           {renderSinglePageContent(leftPage, true, currentSpreadIndex)}
         </div>
 

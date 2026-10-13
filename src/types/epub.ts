@@ -108,6 +108,8 @@ export type ViewMode = '3d' | '2d';
 export interface ReadingSettings {
   viewMode: ViewMode;
   twoPageSpread2D: boolean;
+  /** Fit page content to the viewport (no scrolling, like a Kindle Paperwhite). */
+  fitToPage: boolean;
   fontFamily: FontFamily;
   fontSize: number; // in pt/px (18..36)
   lineHeight: number; // in px (32..54)
