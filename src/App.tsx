@@ -384,15 +384,15 @@ export default function App() {
               console.log('[handleImportFolder] no folder selected or no EPUBs found');
               return;
             }
+            let firstParsed: ParsedBook | null = null;
             for (const epub of opened) {
                           console.log('[handleImportFolder] parsing EPUB:', epub.name);
                           const parsed = await parseEpubFile(epub.bytes);
                           console.log('[handleImportFolder] parse successful:', parsed.metadata.title);
                           handleAddToLibrary(parsed, epub.path);
+                          if (!firstParsed) firstParsed = parsed;
                         }
-                        // Load the first book
-                        const firstParsed = await parseEpubFile(opened[0].bytes);
-                        handleLoadCustomBook(firstParsed);
+            if (firstParsed) handleLoadCustomBook(firstParsed);
           } catch (err) {
             console.error('[handleImportFolder] error:', err);
             alert('Fehler beim Importieren: ' + (err instanceof Error ? err.message : String(err)));
