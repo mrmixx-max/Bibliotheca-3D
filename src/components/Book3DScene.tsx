@@ -2,12 +2,14 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import {
   AtmosphereTheme,
+  BackgroundTexture,
   BookMetadata,
   FontFamily,
   PaperTonePreset,
   RenderedPage
 } from '../types/epub';
 import {
+  createBackgroundDataUrl,
   createCoverTexture,
   createPaperEdgeTexture,
   createWoodTexture,
@@ -30,6 +32,8 @@ interface Book3DSceneProps {
   lineHeight?: number;
   paperTonePreset?: PaperTonePreset;
   readingZoom?: number;
+  backgroundTexture?: BackgroundTexture;
+  customTextColor?: string;
 }
 
 const PAGE_WIDTH = 2.4;
@@ -49,7 +53,9 @@ export const Book3DScene: React.FC<Book3DSceneProps> = ({
   fontSize = 26,
   lineHeight = 44,
   paperTonePreset = 'creme',
-  readingZoom = 1.0
+  readingZoom = 1.0,
+  backgroundTexture = 'none',
+  customTextColor = ''
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -130,13 +136,13 @@ export const Book3DScene: React.FC<Book3DSceneProps> = ({
     const activeTone = paperColors[paperTonePreset] || paperColors.creme;
     return {
       paperTone: activeTone.paper,
-      textColor: activeTone.text,
+      textColor: customTextColor || activeTone.text,
       fontFamily: fontFamilies[fontFamily] || fontFamilies.cormorant,
       fontSize,
       lineHeight,
       bionicReading
     };
-  }, [bionicReading, fontFamily, fontSize, lineHeight, paperTonePreset]);
+  }, [bionicReading, fontFamily, fontSize, lineHeight, paperTonePreset, customTextColor]);
 
   // Update page textures on static meshes
   const updateStaticPageTextures = useCallback(() => {
@@ -689,7 +695,18 @@ export const Book3DScene: React.FC<Book3DSceneProps> = ({
         candleLightRef.current.visible = false;
       }
     }
-  }, [atmosphere]);
+
+    // A chosen backdrop motif wins over the flat atmosphere colour.
+    if (backgroundTexture !== 'none') {
+      const dataUrl = createBackgroundDataUrl(backgroundTexture, 1024);
+      if (dataUrl) {
+        new THREE.TextureLoader().load(dataUrl, (tex) => {
+          tex.colorSpace = THREE.SRGBColorSpace;
+          if (sceneRef.current) sceneRef.current.background = tex;
+        });
+      }
+    }
+  }, [atmosphere, backgroundTexture]);
 
   // Camera Mode updates & Reading Zoom
   useEffect(() => {

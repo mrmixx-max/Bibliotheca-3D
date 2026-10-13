@@ -31,6 +31,8 @@ interface ReaderHUDProps {
   isSpeaking?: boolean;
   isSpeakingPaused?: boolean;
   onToggleSpeech?: () => void;
+  libraryCount: number;
+  onToggleFullscreen: () => void;
 }
 
 export const ReaderHUD: React.FC<ReaderHUDProps> = ({
@@ -62,7 +64,9 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
   onUpdateSettings,
   isSpeaking = false,
   isSpeakingPaused = false,
-  onToggleSpeech
+  onToggleSpeech,
+  libraryCount,
+  onToggleFullscreen,
 }) => {
   const currentLeftPage = currentSpreadIndex + 1;
   const currentRightPage = Math.min(currentSpreadIndex + 2, totalPages);
@@ -250,11 +254,16 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
             )}
           </button>
           <button
-            onClick={onOpenLibrary}
-            className="hover:text-amber-200 transition-colors whitespace-nowrap cursor-pointer"
-          >
-            Bibliothek
-          </button>
+                      onClick={onOpenLibrary}
+                      className="hover:text-amber-200 transition-colors whitespace-nowrap cursor-pointer relative"
+                    >
+                      Bibliothek
+                      {libraryCount > 0 && (
+                        <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-amber-400 text-stone-950 text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
+                          {libraryCount > 9 ? '9+' : libraryCount}
+                        </span>
+                      )}
+                    </button>
           <button
             onClick={onOpenTOC}
             className="hover:text-amber-200 transition-colors whitespace-nowrap cursor-pointer"
@@ -272,6 +281,15 @@ export const ReaderHUD: React.FC<ReaderHUDProps> = ({
 
         {/* Zone 3: Primary CTA */}
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={onToggleFullscreen}
+            className="p-1.5 rounded-lg bg-stone-900/90 hover:bg-stone-800 border border-stone-800 hover:border-amber-400/50 text-stone-300 hover:text-amber-200 transition-colors cursor-pointer"
+            title="Vollbild umschalten (F11)"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+            </svg>
+          </button>
           <button
             onClick={onUploadEpub}
             className="px-3.5 py-1.5 text-xs font-medium text-stone-900 bg-amber-200 rounded-lg hover:bg-amber-100 transition-colors whitespace-nowrap cursor-pointer shadow-sm flex items-center gap-1.5"

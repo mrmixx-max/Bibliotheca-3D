@@ -1,5 +1,5 @@
 import React from 'react';
-import { FontFamily, PaperTonePreset, ReadingSettings } from '../types/epub';
+import { BackgroundTexture, FontFamily, PaperTonePreset, ReadingSettings } from '../types/epub';
 
 interface TypographySettingsModalProps {
   isOpen: boolean;
@@ -32,6 +32,30 @@ export const TypographySettingsModal: React.FC<TypographySettingsModalProps> = (
     { id: 'white', label: 'Reinweiß', bg: '#ffffff', text: '#111111' },
     { id: 'sepia', label: 'Antik Sepia', bg: '#f4ecd8', text: '#2b1f14' },
     { id: 'dark', label: 'Obsidian Nacht', bg: '#1c1a18', text: '#e6ded1' }
+  ];
+
+  // Decorative backdrop motifs. `swatch` is a CSS gradient that previews the
+  // look; the real texture is generated procedurally at render time.
+  const backgroundOptions: { id: BackgroundTexture; label: string; swatch: string }[] = [
+    { id: 'none', label: 'Keine', swatch: 'linear-gradient(135deg,#1c1917,#292524)' },
+    { id: 'parchment', label: 'Pergament', swatch: 'linear-gradient(135deg,#f3e2bd,#c9a970)' },
+    { id: 'old-paper', label: 'Altes Papier', swatch: 'linear-gradient(135deg,#e6dfcf,#bdb3a0)' },
+    { id: 'leather', label: 'Leder', swatch: 'linear-gradient(135deg,#5a3327,#2a1510)' },
+    { id: 'linen', label: 'Leinen', swatch: 'linear-gradient(135deg,#6b6350,#3a352a)' },
+    { id: 'marble', label: 'Marmor', swatch: 'linear-gradient(135deg,#f2f0eb,#b9b6ae)' },
+    { id: 'dark-wood', label: 'Dunkles Holz', swatch: 'linear-gradient(135deg,#3d2519,#150c07)' }
+  ];
+
+  const textColors: { value: string; label: string }[] = [
+    { value: '', label: 'Automatisch' },
+    { value: '#1c1611', label: 'Tinte' },
+    { value: '#3a2c1e', label: 'Sepia' },
+    { value: '#5c2f1a', label: 'Ziegel' },
+    { value: '#1e3a5f', label: 'Nachtblau' },
+    { value: '#1f3d2b', label: 'Waldgrün' },
+    { value: '#5a1f3d', label: 'Bordeaux' },
+    { value: '#4a4238', label: 'Graubraun' },
+    { value: '#e6ded1', label: 'Creme (hell)' }
   ];
 
   return (
@@ -210,6 +234,66 @@ export const TypographySettingsModal: React.FC<TypographySettingsModalProps> = (
                   </div>
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Background Texture */}
+          <div>
+            <div className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2.5">
+              Hintergrund-Motiv
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {backgroundOptions.map(bg => (
+                <button
+                  key={bg.id}
+                  onClick={() => onUpdateSettings({ backgroundTexture: bg.id })}
+                  className={`rounded-xl border overflow-hidden transition-all cursor-pointer ${
+                    settings.backgroundTexture === bg.id
+                      ? 'border-amber-400 ring-1 ring-amber-400/40 shadow-md'
+                      : 'border-stone-800 hover:border-stone-700'
+                  }`}
+                >
+                  <div className="h-10 w-full" style={{ backgroundImage: bg.swatch }} />
+                  <div className="text-[11px] text-stone-300 py-1.5 px-1 truncate bg-stone-900">
+                    {bg.label}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Text Colour */}
+          <div>
+            <div className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2.5">
+              Schriftfarbe
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {textColors.map(tc => {
+                const isActive = (settings.customTextColor || '') === tc.value;
+                return (
+                  <button
+                    key={tc.label}
+                    onClick={() => onUpdateSettings({ customTextColor: tc.value })}
+                    title={tc.label}
+                    className={`flex items-center gap-2 pl-1.5 pr-2.5 py-1.5 rounded-lg border text-[11px] transition-all cursor-pointer ${
+                      isActive
+                        ? 'border-amber-400 bg-amber-400/10 text-amber-100'
+                        : 'border-stone-800 text-stone-300 hover:border-stone-700 hover:bg-stone-800/50'
+                    }`}
+                  >
+                    <span
+                      className="w-4 h-4 rounded-full border border-white/20 shrink-0"
+                      style={{
+                        backgroundColor: tc.value || '#9ca3af',
+                        backgroundImage: tc.value
+                          ? undefined
+                          : 'linear-gradient(135deg,#1c1611 50%,#e6ded1 50%)'
+                      }}
+                    />
+                    {tc.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 

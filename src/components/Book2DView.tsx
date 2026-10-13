@@ -1,6 +1,7 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react';
 import {
   AtmosphereTheme,
+  BackgroundTexture,
   BookMetadata,
   FontFamily,
   HighlightColor,
@@ -10,6 +11,7 @@ import {
 } from '../types/epub';
 import { playPageTurnSound } from '../utils/audioEffects';
 import { speechReader } from '../utils/speechReader';
+import { createBackgroundDataUrl } from '../utils/proceduralTextures';
 
 interface Book2DViewProps {
   metadata: BookMetadata;
@@ -32,6 +34,8 @@ interface Book2DViewProps {
   onAddHighlight?: (highlight: Omit<TextHighlight, 'id' | 'timestamp' | 'bookId'>) => void;
   searchHighlightTerm?: string;
   onClearSearchHighlight?: () => void;
+  backgroundTexture?: BackgroundTexture;
+  customTextColor?: string;
 }
 
 export const Book2DView: React.FC<Book2DViewProps> = ({
@@ -53,7 +57,9 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
   highlights = [],
   onAddHighlight,
   searchHighlightTerm,
-  onClearSearchHighlight
+  onClearSearchHighlight,
+  backgroundTexture = 'none',
+  customTextColor = ''
 }) => {
   // Safe page retrieval
   const leftPage = pages[currentSpreadIndex] || null;
@@ -101,6 +107,13 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
   };
 
   const activePaper = paperColors[paperTonePreset] || paperColors.creme;
+  const activeTextColor = customTextColor || activePaper.text;
+
+  // Decorative backdrop, generated once per texture choice.
+  const backdropUrl = React.useMemo(
+    () => (backgroundTexture === 'none' ? '' : createBackgroundDataUrl(backgroundTexture)),
+    [backgroundTexture]
+  );
 
   const fontFamilies: Record<FontFamily, string> = {
     cormorant: '"Cormorant Garamond", Georgia, serif',
@@ -415,7 +428,7 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
             <div className="text-center my-6 pb-4 border-b border-stone-400/20 select-none">
               <h2
                 className="text-xl sm:text-2xl font-bold tracking-wide"
-                style={{ fontFamily: '"Cinzel", "Cormorant Garamond", serif', color: activePaper.text }}
+                style={{ fontFamily: '"Cinzel", "Cormorant Garamond", serif', color: activeTextColor }}
               >
                 {page.chapterTitle}
               </h2>
@@ -429,7 +442,7 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
               fontFamily: activeFont,
               fontSize: `${fontSize}px`,
               lineHeight: `${lineHeight}px`,
-              color: activePaper.text
+              color: activeTextColor
             }}
           >
             {paragraphs.map((p, idx) => (
@@ -456,6 +469,19 @@ export const Book2DView: React.FC<Book2DViewProps> = ({
       className="relative w-screen h-screen flex flex-col items-center justify-center overflow-hidden transition-colors duration-500 select-none"
       style={{ backgroundColor: activeAtmosphere.bg }}
     >
+      {/* Decorative backdrop texture (parchment, leather, ...) */}
+      {backdropUrl && (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: `url(${backdropUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.55
+          }}
+        />
+      )}
+
       {/* Atmosphere radial glow */}
       <div
         className="absolute inset-0 pointer-events-none transition-all duration-700"

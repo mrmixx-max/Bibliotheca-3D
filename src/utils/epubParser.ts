@@ -35,11 +35,11 @@ export function sanitizeBookHtml(html: string): string {
 }
 
 /**
- * Parses an EPUB file (ArrayBuffer or File) into structured chapters and spreads
+ * Parses an EPUB file (ArrayBuffer, Uint8Array or File) into structured chapters and spreads
  */
-export async function parseEpubFile(data: ArrayBuffer | File): Promise<ParsedBook> {
+export async function parseEpubFile(data: ArrayBuffer | Uint8Array | File): Promise<ParsedBook> {
   const zip = new JSZip();
-  const loadedZip = await zip.loadAsync(data);
+  const loadedZip = await zip.loadAsync(data as never);
 
   // 1. Locate container.xml
   const containerFile = loadedZip.file('META-INF/container.xml');

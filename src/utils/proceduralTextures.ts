@@ -674,3 +674,232 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: num
   }
   ctx.fillText(line.trim(), x, curY);
 }
+
+/**
+ * Builds a decorative backdrop for the reading room as a data URL, so it can be
+ * used as a CSS background (2D view) and as a Three.js texture (3D view)
+ * without shipping any image assets.
+ *
+ * All motifs are drawn procedurally on a canvas: no network, no files, and
+ * nothing that a strict CSP would block.
+ */
+export function createBackgroundDataUrl(kind: string, size = 1024): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  const w = size;
+  const h = size;
+
+  const noise = (count: number, light: string, dark: string, alpha: number) => {
+    for (let i = 0; i < count; i++) {
+      ctx.fillStyle = Math.random() > 0.5 ? light : dark;
+      ctx.globalAlpha = Math.random() * alpha;
+      ctx.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5);
+    }
+    ctx.globalAlpha = 1;
+  };
+
+  const vignette = (strength = 0.45) => {
+    const g = ctx.createRadialGradient(w / 2, h / 2, w * 0.18, w / 2, h / 2, w * 0.72);
+    g.addColorStop(0, 'rgba(255,255,255,0.05)');
+    g.addColorStop(1, `rgba(0,0,0,${strength})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  };
+
+  switch (kind) {
+    case 'parchment': {
+      // Warm aged parchment with fibre grain and darker, worn edges.
+      const g = ctx.createRadialGradient(w * 0.5, h * 0.45, w * 0.1, w * 0.5, h * 0.5, w * 0.75);
+      g.addColorStop(0, '#f3e2bd');
+      g.addColorStop(0.55, '#e8d2a6');
+      g.addColorStop(1, '#c9a970');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+
+      // Fibres
+      for (let i = 0; i < 900; i++) {
+        ctx.strokeStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.10)' : 'rgba(120,90,50,0.10)';
+        ctx.lineWidth = 0.6 + Math.random();
+        const x = Math.random() * w;
+        const y = Math.random() * h;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + (Math.random() - 0.5) * 60, y + (Math.random() - 0.5) * 12);
+        ctx.stroke();
+      }
+
+      // Foxing (age spots)
+      for (let i = 0; i < 120; i++) {
+        const r = 2 + Math.random() * 14;
+        const x = Math.random() * w;
+        const y = Math.random() * h;
+        const spot = ctx.createRadialGradient(x, y, 0, x, y, r);
+        spot.addColorStop(0, 'rgba(150,110,60,0.16)');
+        spot.addColorStop(1, 'rgba(150,110,60,0)');
+        ctx.fillStyle = spot;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      noise(30000, 'rgba(255,255,255,0.5)', 'rgba(90,60,30,0.5)', 0.05);
+
+      // Deckled edges
+      const edge = ctx.createRadialGradient(w / 2, h / 2, w * 0.42, w / 2, h / 2, w * 0.62);
+      edge.addColorStop(0, 'rgba(120,85,40,0)');
+      edge.addColorStop(1, 'rgba(105,72,32,0.5)');
+      ctx.fillStyle = edge;
+      ctx.fillRect(0, 0, w, h);
+      break;
+    }
+
+    case 'old-paper': {
+      // Cooler, greyed newsprint with visible laid lines.
+      ctx.fillStyle = '#ded5c2';
+      ctx.fillRect(0, 0, w, h);
+
+      for (let y = 0; y < h; y += 5) {
+        ctx.fillStyle = `rgba(120,110,95,${0.03 + Math.random() * 0.05})`;
+        ctx.fillRect(0, y, w, 1);
+      }
+      for (let x = 0; x < w; x += 90) {
+        ctx.fillStyle = 'rgba(120,110,95,0.05)';
+        ctx.fillRect(x, 0, 1, h);
+      }
+
+      noise(45000, 'rgba(255,255,255,0.6)', 'rgba(80,70,55,0.6)', 0.07);
+
+      for (let i = 0; i < 60; i++) {
+        const r = 3 + Math.random() * 18;
+        const x = Math.random() * w;
+        const y = Math.random() * h;
+        const spot = ctx.createRadialGradient(x, y, 0, x, y, r);
+        spot.addColorStop(0, 'rgba(130,110,75,0.13)');
+        spot.addColorStop(1, 'rgba(130,110,75,0)');
+        ctx.fillStyle = spot;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      vignette(0.42);
+      break;
+    }
+
+    case 'leather': {
+      // Embossed leather grain with pebble cells.
+      ctx.fillStyle = '#3a1f18';
+      ctx.fillRect(0, 0, w, h);
+
+      for (let i = 0; i < 7000; i++) {
+        const x = Math.random() * w;
+        const y = Math.random() * h;
+        const r = 3 + Math.random() * 9;
+        const cell = ctx.createRadialGradient(x, y, 0, x, y, r);
+        cell.addColorStop(0, 'rgba(255,200,160,0.05)');
+        cell.addColorStop(0.6, 'rgba(0,0,0,0.05)');
+        cell.addColorStop(1, 'rgba(0,0,0,0.12)');
+        ctx.fillStyle = cell;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      noise(35000, 'rgba(255,220,190,0.5)', 'rgba(20,8,4,0.7)', 0.08);
+      vignette(0.55);
+      break;
+    }
+
+    case 'linen': {
+      // Woven cloth: two crossed thread directions.
+      ctx.fillStyle = '#4a4437';
+      ctx.fillRect(0, 0, w, h);
+
+      for (let x = 0; x < w; x += 4) {
+        ctx.fillStyle = `rgba(255,250,235,${0.02 + Math.random() * 0.05})`;
+        ctx.fillRect(x, 0, 2, h);
+      }
+      for (let y = 0; y < h; y += 4) {
+        ctx.fillStyle = `rgba(0,0,0,${0.02 + Math.random() * 0.05})`;
+        ctx.fillRect(0, y, w, 2);
+      }
+
+      noise(28000, 'rgba(255,255,255,0.5)', 'rgba(20,18,12,0.6)', 0.06);
+      vignette(0.5);
+      break;
+    }
+
+    case 'marble': {
+      // Veined stone: pale base with meandering mineral veins.
+      ctx.fillStyle = '#e9e6df';
+      ctx.fillRect(0, 0, w, h);
+
+      for (let v = 0; v < 26; v++) {
+        ctx.beginPath();
+        let x = Math.random() * w;
+        let y = Math.random() * h;
+        ctx.moveTo(x, y);
+        for (let s = 0; s < 90; s++) {
+          x += (Math.random() - 0.5) * 40;
+          y += 10 + Math.random() * 18;
+          ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = Math.random() > 0.5 ? 'rgba(110,112,120,0.16)' : 'rgba(160,150,140,0.20)';
+        ctx.lineWidth = 0.6 + Math.random() * 2.4;
+        ctx.stroke();
+      }
+
+      noise(40000, 'rgba(255,255,255,0.6)', 'rgba(90,90,95,0.5)', 0.05);
+      vignette(0.35);
+      break;
+    }
+
+    case 'dark-wood': {
+      // Dark planks with grain, matching the 3D reading desk.
+      ctx.fillStyle = '#2b1a13';
+      ctx.fillRect(0, 0, w, h);
+
+      const planks = 6;
+      const plankH = h / planks;
+      for (let p = 0; p < planks; p++) {
+        const y0 = p * plankH;
+        ctx.fillStyle = `rgba(0,0,0,${0.06 + Math.random() * 0.08})`;
+        ctx.fillRect(0, y0, w, plankH);
+
+        for (let i = 0; i < 80; i++) {
+          ctx.strokeStyle = '#1a0f0a';
+          ctx.globalAlpha = 0.05 + Math.random() * 0.12;
+          ctx.lineWidth = 1.2;
+          let x = 0;
+          let y = y0 + Math.random() * plankH;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          while (x < w) {
+            x += 15 + Math.random() * 25;
+            y += (Math.random() - 0.5) * 3;
+            ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 0.45;
+        ctx.strokeStyle = '#0a0604';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, y0 + plankH);
+        ctx.lineTo(w, y0 + plankH);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
+      vignette(0.5);
+      break;
+    }
+
+    default:
+      return '';
+  }
+
+  return canvas.toDataURL('image/png');
+}

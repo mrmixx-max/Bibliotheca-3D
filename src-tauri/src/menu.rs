@@ -16,6 +16,20 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         true,
         Some("CmdOrCtrl+O"),
     )?;
+    let open_multiple = MenuItem::with_id(
+        app,
+        "open_multiple_epubs",
+        "Mehrere EPUBs öffnen…",
+        true,
+        Some("CmdOrCtrl+Shift+O"),
+    )?;
+    let import_folder = MenuItem::with_id(
+        app,
+        "import_folder",
+        "Ordner importieren…",
+        true,
+        Some("CmdOrCtrl+I"),
+    )?;
     let export = MenuItem::with_id(
         app,
         "export_html",
@@ -69,6 +83,9 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         true,
         &[
             &open,
+            &open_multiple,
+            &import_folder,
+            &PredefinedMenuItem::separator(app)?,
             &library,
             &export,
             &PredefinedMenuItem::separator(app)?,
@@ -89,6 +106,14 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         ],
     )?;
 
+    let fullscreen = MenuItem::with_id(
+        app,
+        "toggle_fullscreen",
+        "Vollbild umschalten",
+        true,
+        Some("F11"),
+    )?;
+
     let view = Submenu::with_items(
         app,
         "Darstellung",
@@ -99,7 +124,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &PredefinedMenuItem::separator(app)?,
             &speed,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::fullscreen(app, Some("Vollbild"))?,
+            &fullscreen,
         ],
     )?;
 

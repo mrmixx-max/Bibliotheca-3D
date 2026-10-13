@@ -85,7 +85,17 @@ export interface IsochronicConfig {
 
 export type PaperTonePreset = 'creme' | 'white' | 'sepia' | 'dark';
 
-export interface SpeedReaderState {
+/** Decorative backdrop behind the book — the "room" the reader sits in. */
+export type BackgroundTexture =
+  | 'none'
+  | 'parchment'
+  | 'old-paper'
+  | 'leather'
+  | 'linen'
+  | 'marble'
+  | 'dark-wood';
+
+export type SpeedReaderState = {
   isOpen: boolean;
   isPlaying: boolean;
   wpm: number; // Words per minute (150 - 1000)
@@ -110,6 +120,10 @@ export interface ReadingSettings {
   ambientSound: AmbientSoundType;
   ambientVolume: number;
   isochronic: IsochronicConfig;
+  /** Decorative backdrop texture behind the book. */
+  backgroundTexture: BackgroundTexture;
+  /** Custom text colour; empty string = derive from the paper tone. */
+  customTextColor: string;
 }
 
 export type HighlightColor = 'amber' | 'emerald' | 'rose' | 'sky';

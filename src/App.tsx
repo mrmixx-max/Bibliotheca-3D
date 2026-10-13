@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import confetti from 'canvas-confetti';
-import { Bookmark, ParsedBook, ReadingSettings, TextHighlight } from './types/epub';
+import { Bookmark, BookMetadata, ParsedBook, ReadingSettings, TextHighlight } from './types/epub';
 import { bookId, progressKey } from './utils/bookIdentity';
 import { getParsedSampleBook } from './utils/sampleBooks';
 import { paginateChapters, parseEpubFile } from './utils/epubParser';
@@ -21,7 +21,7 @@ import { BookmarksModal } from './components/BookmarksModal';
 import { SearchModal } from './components/SearchModal';
 import { exportStandaloneHtmlFile } from './utils/singleFileExporter';
 import { speechReader } from './utils/speechReader';
-import { isDesktop, pickEpubBytes, pickEpubFile, saveTextFile } from './utils/platform';
+import { isDesktop, pickEpubBytes, pickEpubFile, pickEpubFolder, saveTextFile, toggleFullscreen } from './utils/platform';
 import {
   getAudioContext,
   startAmbientSound,
@@ -37,6 +37,7 @@ import {
 const STORAGE_KEY_BOOKMARKS = 'bibliotheca_3d_bookmarks_v1';
 const STORAGE_KEY_SETTINGS = 'bibliotheca_3d_settings_v1';
 const STORAGE_KEY_HIGHLIGHTS = 'bibliotheca_3d_highlights_v1';
+const STORAGE_KEY_LIBRARY = 'bibliotheca_3d_library_v1';
 
 export default function App() {
   // Current active parsed book
@@ -65,6 +66,8 @@ export default function App() {
       soundEnabled: true,
       ambientSound: 'none',
       ambientVolume: 0.25,
+      backgroundTexture: 'none',
+      customTextColor: '',
       isochronic: {
         enabled: false,
         preset: '15.4hz_beta',
@@ -106,21 +109,42 @@ export default function App() {
   });
 
   // Text Highlights (Meilenstein 2)
-  const [highlights, setHighlights] = useState<TextHighlight[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_HIGHLIGHTS);
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // ignore
-    }
-    return [];
-  });
+    const [highlights, setHighlights] = useState<TextHighlight[]>(() => {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY_HIGHLIGHTS);
+        if (saved) return JSON.parse(saved);
+      } catch {
+        // ignore
+      }
+      return [];
+    });
 
-  // Text-to-Speech state
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isSpeakingPaused, setIsSpeakingPaused] = useState(false);
+    // Library: user-added books (only metadata + path for re-opening)
+      interface LibraryBook {
+        metadata: BookMetadata;
+        sourcePath: string;
+        addedAt: number;
+      }
+      const [library, setLibrary] = useState<LibraryBook[]>(() => {
+            try {
+              const saved = localStorage.getItem(STORAGE_KEY_LIBRARY);
+              console.log('[library] loading from localStorage:', saved);
+              if (saved) {
+                const parsed = JSON.parse(saved);
+                console.log('[library] parsed:', parsed);
+                return parsed;
+              }
+            } catch (e) {
+              console.error('[library] failed to load from localStorage:', e);
+            }
+            return [];
+          });
 
-  useEffect(() => {
+    // Text-to-Speech state
+    const [isSpeaking, setIsSpeaking] = useState(false);
+    const [isSpeakingPaused, setIsSpeakingPaused] = useState(false);
+
+    useEffect(() => {
     const unsub = speechReader.subscribe((speaking, paused) => {
       setIsSpeaking(speaking);
       setIsSpeakingPaused(paused);
@@ -156,14 +180,24 @@ export default function App() {
 
   // Persist highlights
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_HIGHLIGHTS, JSON.stringify(highlights));
-    } catch {
-      // ignore
-    }
-  }, [highlights]);
+      try {
+        localStorage.setItem(STORAGE_KEY_HIGHLIGHTS, JSON.stringify(highlights));
+      } catch {
+        // ignore
+      }
+    }, [highlights]);
 
-  // Identity of the book currently open — scopes bookmarks, highlights and progress
+    // Persist library
+    useEffect(() => {
+          try {
+            localStorage.setItem(STORAGE_KEY_LIBRARY, JSON.stringify(library));
+            console.log('[library] persisted to localStorage:', library.length, 'books');
+          } catch (e) {
+            console.error('[library] failed to persist to localStorage:', e);
+          }
+        }, [library]);
+
+    // Identity of the book currently open — scopes bookmarks, highlights and progress
   const activeBookId = useMemo(() => bookId(book.metadata), [book.metadata]);
 
   // Bookmarks/highlights for the open book only. The full arrays stay in state so
@@ -296,24 +330,100 @@ export default function App() {
     setBook(newBook);
   };
 
-  // Open an EPUB through the native dialog. Falls back to the in-app library
-  // modal in the browser, where no native picker exists.
-  const handleOpenNative = useCallback(async () => {
-    if (!isDesktop()) {
-      setIsLibraryOpen(true);
-      return;
-    }
-    try {
-      const opened = await pickEpubFile();
-      if (!opened) return;
-      const parsed = await parseEpubFile(opened.bytes.buffer as ArrayBuffer);
-      handleLoadCustomBook(parsed);
-    } catch (err) {
-      console.error('EPUB konnte nicht geöffnet werden:', err);
-    }
-  }, []);
+  // Import EPUBs through the native picker and add them to the library.
+    // Used by Strg+O, the HUD button and the library modal's import zone.
+    const importEpubs = useCallback(async (multiple: boolean) => {
+        console.log('[importEpubs] called, isDesktop:', isDesktop(), 'multiple:', multiple);
+        if (!isDesktop()) {
+          console.log('[importEpubs] not desktop, opening library modal');
+          setIsLibraryOpen(true);
+          return;
+        }
+        try {
+          console.log('[importEpubs] calling pickEpubFile...');
+          const opened = await pickEpubFile(multiple);
+          console.log('[importEpubs] pickEpubFile returned:', opened);
+          if (!opened || opened.length === 0) {
+            console.log('[importEpubs] no file selected (cancelled)');
+            return;
+          }
+          // Parse every chosen file once, add each to the library, open the first.
+                    let firstParsed: ParsedBook | null = null;
+                    for (const epub of opened) {
+                      console.log('[importEpubs] parsing EPUB:', epub.name);
+                      const parsed = await parseEpubFile(epub.bytes);
+                      console.log('[importEpubs] parse successful:', parsed.metadata.title);
+                      handleAddToLibrary(parsed, epub.path);
+                      if (!firstParsed) firstParsed = parsed;
+                    }
+          if (firstParsed) handleLoadCustomBook(firstParsed);
+        } catch (err) {
+          console.error('[importEpubs] error:', err);
+          alert('Fehler beim Laden: ' + (err instanceof Error ? err.message : String(err)));
+        }
+      }, []);
 
-  const handleAddBookmark = (pageIndex: number, note?: string) => {
+    const handleOpenNative = useCallback(() => importEpubs(false), [importEpubs]);
+
+        // Open multiple EPUBs at once
+        const handleOpenMultiple = useCallback(() => importEpubs(true), [importEpubs]);
+
+        // Import all EPUBs from a folder
+        const handleImportFolder = useCallback(async () => {
+          console.log('[handleImportFolder] called, isDesktop:', isDesktop());
+          if (!isDesktop()) {
+            alert('Ordner-Import ist nur in der Desktop-Version verfügbar.');
+            return;
+          }
+          try {
+            console.log('[handleImportFolder] calling pickEpubFolder...');
+            const opened = await pickEpubFolder();
+            console.log('[handleImportFolder] pickEpubFolder returned:', opened);
+            if (!opened || opened.length === 0) {
+              console.log('[handleImportFolder] no folder selected or no EPUBs found');
+              return;
+            }
+            for (const epub of opened) {
+                          console.log('[handleImportFolder] parsing EPUB:', epub.name);
+                          const parsed = await parseEpubFile(epub.bytes);
+                          console.log('[handleImportFolder] parse successful:', parsed.metadata.title);
+                          handleAddToLibrary(parsed, epub.path);
+                        }
+                        // Load the first book
+                        const firstParsed = await parseEpubFile(opened[0].bytes);
+                        handleLoadCustomBook(firstParsed);
+          } catch (err) {
+            console.error('[handleImportFolder] error:', err);
+            alert('Fehler beim Importieren: ' + (err instanceof Error ? err.message : String(err)));
+          }
+        }, []);
+
+        // Add a parsed book to the library
+          const handleAddToLibrary = useCallback((parsed: ParsedBook, sourcePath: string) => {
+            console.log('[handleAddToLibrary] called with:', parsed.metadata.title, sourcePath);
+            const newEntry: LibraryBook = {
+              metadata: parsed.metadata,
+              sourcePath,
+              addedAt: Date.now(),
+            };
+            setLibrary((prev) => {
+              // Avoid duplicates by checking sourcePath
+              if (prev.some((entry) => entry.sourcePath === sourcePath)) {
+                console.log('[handleAddToLibrary] duplicate skipped:', sourcePath);
+                return prev;
+              }
+              console.log('[handleAddToLibrary] added, new count:', prev.length + 1);
+              return [newEntry, ...prev];
+            });
+          }, []);
+
+        // Remove a book from the library
+                const handleRemoveFromLibrary = useCallback((sourcePath: string) => {
+                  console.log('[handleRemoveFromLibrary] called with:', sourcePath);
+                  setLibrary((prev) => prev.filter((entry) => entry.sourcePath !== sourcePath));
+                }, []);
+
+        const handleAddBookmark = (pageIndex: number, note?: string) => {
     const page = book.pages[pageIndex] || book.pages[0];
     const excerpt = page
       ? page.htmlContent.replace(/<[^>]+>/g, '').trim().slice(0, 140) + '...'
@@ -370,14 +480,32 @@ export default function App() {
   }, [activeBookId]);
 
   const handleExportHtml = useCallback(() => {
-    void exportStandaloneHtmlFile(book, async (suggestedName, contents) => {
-      // Desktop: let the user choose the destination. Browser: keep the
-      // existing download behaviour.
+      void exportStandaloneHtmlFile(book, async (suggestedName, contents) => {
+        // Desktop: let the user choose the destination. Browser: keep the
+        // existing download behaviour.
+        if (isDesktop()) {
+          await saveTextFile(suggestedName, contents);
+        }
+      });
+    }, [book]);
+
+    // Fullscreen toggle. The Rust command flips the window; the browser uses the
+    // standard Fullscreen API so the web build keeps the same control.
+    const handleToggleFullscreen = useCallback(async () => {
       if (isDesktop()) {
-        await saveTextFile(suggestedName, contents);
+        await toggleFullscreen();
+        return;
       }
-    });
-  }, [book]);
+      try {
+        if (document.fullscreenElement) {
+          await document.exitFullscreen();
+        } else {
+          await document.documentElement.requestFullscreen();
+        }
+      } catch (err) {
+        console.error('[handleToggleFullscreen] error:', err);
+      }
+    }, []);
 
   const handleUpdateSettings = useCallback((partial: Partial<ReadingSettings>) => {
     setSettings((prev) => {
@@ -401,112 +529,129 @@ export default function App() {
   }, []);
 
   // Window drag & drop handler for EPUB files
-  useEffect(() => {
-    const handleDragOver = (e: DragEvent) => {
-      e.preventDefault();
-    };
+    useEffect(() => {
+      const handleDragOver = (e: DragEvent) => {
+        e.preventDefault();
+      };
 
-    const handleDrop = async (e: DragEvent) => {
-      e.preventDefault();
-      if (e.dataTransfer?.files && e.dataTransfer.files[0]) {
-        const file = e.dataTransfer.files[0];
-        if (file.name.toLowerCase().endsWith('.epub')) {
-          try {
-            const parsed = await parseEpubFile(file);
-            handleLoadCustomBook(parsed);
-          } catch (err) {
-            console.error('Drop EPUB failed:', err);
-          }
-        }
-      }
-    };
+      const handleDrop = async (e: DragEvent) => {
+              e.preventDefault();
+              console.log('[web drop] drop event received');
+              if (e.dataTransfer?.files && e.dataTransfer.files[0]) {
+                const file = e.dataTransfer.files[0];
+                console.log('[web drop] file:', file.name, file.size);
+                if (file.name.toLowerCase().endsWith('.epub')) {
+                  try {
+                    const parsed = await parseEpubFile(file);
+                    handleLoadCustomBook(parsed);
+                    // Note: In browser, we don't have a persistent path, so we don't add to library
+                  } catch (err) {
+                    console.error('Drop EPUB failed:', err);
+                  }
+                }
+              }
+            };
 
-    window.addEventListener('dragover', handleDragOver);
-    window.addEventListener('drop', handleDrop);
-    return () => {
-      window.removeEventListener('dragover', handleDragOver);
-      window.removeEventListener('drop', handleDrop);
-    };
-  }, []);
+      window.addEventListener('dragover', handleDragOver);
+      window.addEventListener('drop', handleDrop);
+      return () => {
+        window.removeEventListener('dragover', handleDragOver);
+        window.removeEventListener('drop', handleDrop);
+      };
+    }, []);
 
   // Native drop handling: Tauri reports dropped files by path rather than as
-  // File objects, so the webview's own drop event never fires in the shell.
-  useEffect(() => {
-    if (!isDesktop()) return;
-    let unlisten: (() => void) | undefined;
+    // File objects, so the webview's own drop event never fires in the shell.
+    useEffect(() => {
+      if (!isDesktop()) return;
+      let unlisten: (() => void) | undefined;
 
-    void (async () => {
-      const { getCurrentWebview } = await import('@tauri-apps/api/webview');
-      unlisten = await getCurrentWebview().onDragDropEvent(async (event) => {
-        if (event.payload.type !== 'drop') return;
-        const first = event.payload.paths?.[0];
-        if (!first || !first.toLowerCase().endsWith('.epub')) return;
-        try {
-          const bytes = await pickEpubBytes(first);
-          if (!bytes) return;
-          const parsed = await parseEpubFile(bytes.buffer as ArrayBuffer);
-          handleLoadCustomBook(parsed);
-        } catch (err) {
-          console.error('Drop EPUB failed:', err);
-        }
-      });
-    })();
+      void (async () => {
+              const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+              unlisten = await getCurrentWebview().onDragDropEvent(async (event) => {
+                console.log('[onDragDropEvent] received:', event);
+                if (event.payload.type !== 'drop') return;
+                const first = event.payload.paths?.[0];
+                console.log('[onDragDropEvent] drop path:', first);
+                if (!first || !first.toLowerCase().endsWith('.epub')) return;
+                try {
+                                  const bytes = await pickEpubBytes(first);
+                                  if (!bytes) return;
+                                  const parsed = await parseEpubFile(bytes);
+                                  handleAddToLibrary(parsed, first);
+                                  handleLoadCustomBook(parsed);
+                } catch (err) {
+                  console.error('Drop EPUB failed:', err);
+                }
+              });
+            })();
 
-    return () => {
-      unlisten?.();
-    };
-  }, []);
+      return () => {
+        unlisten?.();
+      };
+    }, []);
 
   // Menu bar actions. The native menu lives in Rust; it forwards clicks here so
-  // the behaviour stays in one place with the rest of the UI state.
-  useEffect(() => {
-    if (!isDesktop()) return;
-    let unlisten: (() => void) | undefined;
+    // the behaviour stays in one place with the rest of the UI state.
+    useEffect(() => {
+      if (!isDesktop()) return;
+      let unlisten: (() => void) | undefined;
 
-    void (async () => {
-      const { listen } = await import('@tauri-apps/api/event');
-      unlisten = await listen<string>('menu-action', (event) => {
-        switch (event.payload) {
-          case 'open_epub':
-            void handleOpenNative();
-            break;
-          case 'open_library':
-            setIsLibraryOpen(true);
-            break;
-          case 'export_html':
-            handleExportHtml();
-            break;
-          case 'open_search':
-            setIsSearchOpen(true);
-            break;
-          case 'open_bookmarks':
-            setIsBookmarksOpen(true);
-            break;
-          case 'open_settings':
-            setIsSettingsOpen(true);
-            break;
-          case 'open_typography':
-            setIsTypographyOpen(true);
-            break;
-          case 'open_speed_reader':
-            setIsSpeedReaderOpen(true);
-            break;
-          case 'toggle_view':
-            setSettings((s) => ({ ...s, viewMode: s.viewMode === '3d' ? '2d' : '3d' }));
-            break;
-          case 'toggle_speech':
-            handleToggleSpeech();
-            break;
-          default:
-            break;
-        }
-      });
-    })();
+      void (async () => {
+        const { listen } = await import('@tauri-apps/api/event');
+        unlisten = await listen<string>('menu-action', (event) => {
+          console.log('[menu-action] received:', event.payload);
+          switch (event.payload) {
+                      case 'open_epub':
+                        void handleOpenNative();
+                        break;
+                      case 'open_multiple_epubs':
+                        void handleOpenMultiple();
+                        break;
+                      case 'import_folder':
+                        void handleImportFolder();
+                        break;
+                      case 'open_library':
+                        setIsLibraryOpen(true);
+                        break;
+                      case 'export_html':
+                        handleExportHtml();
+                        break;
+                      case 'open_search':
+                        setIsSearchOpen(true);
+                        break;
+                      case 'open_bookmarks':
+                        setIsBookmarksOpen(true);
+                        break;
+                      case 'open_settings':
+                        setIsSettingsOpen(true);
+                        break;
+                      case 'open_typography':
+                        setIsTypographyOpen(true);
+                        break;
+                      case 'open_speed_reader':
+                        setIsSpeedReaderOpen(true);
+                        break;
+                      case 'toggle_view':
+                                              setSettings((s) => ({ ...s, viewMode: s.viewMode === '3d' ? '2d' : '3d' }));
+                                              break;
+                                            case 'toggle_fullscreen':
+                                              void handleToggleFullscreen();
+                                              break;
+                                            case 'toggle_speech':
+                        handleToggleSpeech();
+                        break;
+                      default:
+                        console.warn('[menu-action] unknown action:', event.payload);
+                        break;
+                    }
+        });
+      })();
 
-    return () => {
-      unlisten?.();
-    };
-  }, [handleOpenNative, handleExportHtml, handleToggleSpeech]);
+      return () => {
+        unlisten?.();
+      };
+  }, [handleOpenNative, handleOpenMultiple, handleImportFolder, handleExportHtml, handleToggleSpeech, handleToggleFullscreen]);
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-stone-950 font-sans select-none">
@@ -526,6 +671,8 @@ export default function App() {
           lineHeight={settings.lineHeight}
           paperTonePreset={settings.paperTonePreset}
           readingZoom={settings.readingZoom}
+          backgroundTexture={settings.backgroundTexture}
+          customTextColor={settings.customTextColor}
         />
       ) : (
         <Book2DView
@@ -551,50 +698,57 @@ export default function App() {
           onAddHighlight={handleAddHighlight}
           searchHighlightTerm={searchHighlightTerm}
           onClearSearchHighlight={() => setSearchHighlightTerm('')}
+          backgroundTexture={settings.backgroundTexture}
+          customTextColor={settings.customTextColor}
         />
       )}
 
       {/* Reader HUD Overlays */}
-      <ReaderHUD
-        metadata={book.metadata}
-        currentSpreadIndex={currentSpreadIndex}
-        totalPages={book.pages.length}
-        onPageSelect={handleSelectPage}
-        viewMode={settings.viewMode}
-        onViewModeChange={(mode) => setSettings((s) => ({ ...s, viewMode: mode }))}
-        cameraMode={settings.cameraMode}
-        onCameraModeChange={(mode) => setSettings((s) => ({ ...s, cameraMode: mode }))}
-        atmosphere={settings.atmosphere}
-        isochronic={settings.isochronic}
-        soundEnabled={settings.soundEnabled}
-        onToggleSound={() => setSettings((s) => ({ ...s, soundEnabled: !s.soundEnabled }))}
-        onOpenLibrary={() => setIsLibraryOpen(true)}
-        onOpenTOC={() => setIsTOCOpen(true)}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenTypography={() => setIsTypographyOpen(true)}
-        onOpenBookmarks={() => setIsBookmarksOpen(true)}
-        onOpenSpeedReader={() => setIsSpeedReaderOpen(true)}
-        onOpenSearch={() => setIsSearchOpen(true)}
-        bionicReading={settings.bionicReading}
-        onToggleBionic={() => setSettings((s) => ({ ...s, bionicReading: !s.bionicReading }))}
-        onUploadEpub={handleOpenNative}
-        onExportHtml={handleExportHtml}
-        fontFamily={settings.fontFamily}
-        fontSize={settings.fontSize}
-        onUpdateSettings={handleUpdateSettings}
-        isSpeaking={isSpeaking}
-        isSpeakingPaused={isSpeakingPaused}
-        onToggleSpeech={handleToggleSpeech}
-      />
+            <ReaderHUD
+              metadata={book.metadata}
+              currentSpreadIndex={currentSpreadIndex}
+              totalPages={book.pages.length}
+              onPageSelect={handleSelectPage}
+              viewMode={settings.viewMode}
+              onViewModeChange={(mode) => setSettings((s) => ({ ...s, viewMode: mode }))}
+              cameraMode={settings.cameraMode}
+              onCameraModeChange={(mode) => setSettings((s) => ({ ...s, cameraMode: mode }))}
+              atmosphere={settings.atmosphere}
+              isochronic={settings.isochronic}
+              soundEnabled={settings.soundEnabled}
+              onToggleSound={() => setSettings((s) => ({ ...s, soundEnabled: !s.soundEnabled }))}
+              onOpenLibrary={() => setIsLibraryOpen(true)}
+              onOpenTOC={() => setIsTOCOpen(true)}
+              onOpenSettings={() => setIsSettingsOpen(true)}
+              onOpenTypography={() => setIsTypographyOpen(true)}
+              onOpenBookmarks={() => setIsBookmarksOpen(true)}
+              onOpenSpeedReader={() => setIsSpeedReaderOpen(true)}
+              onOpenSearch={() => setIsSearchOpen(true)}
+              bionicReading={settings.bionicReading}
+              onToggleBionic={() => setSettings((s) => ({ ...s, bionicReading: !s.bionicReading }))}
+              onUploadEpub={handleOpenNative}
+              onExportHtml={handleExportHtml}
+              fontFamily={settings.fontFamily}
+              fontSize={settings.fontSize}
+              onUpdateSettings={handleUpdateSettings}
+              isSpeaking={isSpeaking}
+              isSpeakingPaused={isSpeakingPaused}
+              onToggleSpeech={handleToggleSpeech}
+              libraryCount={library.length}
+              onToggleFullscreen={handleToggleFullscreen}
+              />
 
       {/* Modals */}
-      <LibraryModal
-        isOpen={isLibraryOpen}
-        onClose={() => setIsLibraryOpen(false)}
-        onSelectSampleBook={handleSelectSampleBook}
-        onLoadCustomBook={handleLoadCustomBook}
-        activeBookTitle={book.metadata.title}
-      />
+            <LibraryModal
+              isOpen={isLibraryOpen}
+              onClose={() => setIsLibraryOpen(false)}
+              onSelectSampleBook={handleSelectSampleBook}
+              onLoadCustomBook={handleLoadCustomBook}
+              activeBookTitle={book.metadata.title}
+              library={library}
+              onRemoveFromLibrary={handleRemoveFromLibrary}
+              onAddEpubFiles={importEpubs}
+            />
 
       <TableOfContentsModal
         isOpen={isTOCOpen}

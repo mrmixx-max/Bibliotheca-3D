@@ -37,24 +37,70 @@ async function getDialog(): Promise<TauriDialog> {
 export type OpenedEpub = { name: string; path: string; bytes: Uint8Array };
 
 /**
- * Asks the user for an EPUB and returns its bytes.
+ * Asks the user for one or more EPUBs and returns their bytes.
  * Returns null when the user cancels.
  */
-export async function pickEpubFile(): Promise<OpenedEpub | null> {
+export async function pickEpubFile(multiple = false): Promise<OpenedEpub[] | null> {
+  console.log('[pickEpubFile] called, isDesktop:', isDesktop(), 'multiple:', multiple);
   const dialog = await getDialog();
   const selected = await dialog.open({
-    multiple: false,
+    multiple,
     directory: false,
-    title: 'EPUB auswählen',
+    title: multiple ? 'EPUBs auswählen' : 'EPUB auswählen',
     filters: [{ name: 'EPUB-Bücher', extensions: ['epub'] }]
   });
 
+  console.log('[pickEpubFile] dialog result:', selected);
   if (!selected) return null;
-  const path = Array.isArray(selected) ? selected[0] : selected;
-  if (!path) return null;
+  const paths = Array.isArray(selected) ? selected : [selected];
+  if (!paths.length) return null;
 
   const tauri = await getCore();
-  return tauri.invoke<OpenedEpub>('read_epub', { path });
+  const results: OpenedEpub[] = [];
+  for (const path of paths) {
+    console.log('[pickEpubFile] invoking read_epub with path:', path);
+    try {
+      const result = await tauri.invoke<OpenedEpub>('read_epub', { path });
+      console.log('[pickEpubFile] read_epub result:', result);
+      results.push(result);
+    } catch (err) {
+      console.error('[pickEpubFile] read_epub error for', path, ':', err);
+      throw err;
+    }
+  }
+  return results;
+}
+
+/**
+ * Asks the user for a folder and returns all EPUB files found recursively.
+ * Returns null when the user cancels.
+ */
+export async function pickEpubFolder(): Promise<OpenedEpub[] | null> {
+  console.log('[pickEpubFolder] called, isDesktop:', isDesktop());
+  if (!isDesktop()) return null;
+  
+  const dialog = await getDialog();
+  const selected = await dialog.open({
+    multiple: false,
+    directory: true,
+    title: 'Ordner mit EPUBs auswählen'
+  });
+
+  console.log('[pickEpubFolder] dialog result:', selected);
+  if (!selected) return null;
+  const folderPath = Array.isArray(selected) ? selected[0] : selected;
+  if (!folderPath) return null;
+
+  console.log('[pickEpubFolder] invoking scan_epub_folder with path:', folderPath);
+  const tauri = await getCore();
+  try {
+    const results = await tauri.invoke<OpenedEpub[]>('scan_epub_folder', { folderPath });
+    console.log('[pickEpubFolder] scan_epub_folder result:', results);
+    return results;
+  } catch (err) {
+    console.error('[pickEpubFolder] scan_epub_folder error:', err);
+    throw err;
+  }
 }
 
 /**
@@ -62,9 +108,16 @@ export async function pickEpubFile(): Promise<OpenedEpub | null> {
  * Returns the raw bytes.
  */
 export async function pickEpubBytes(path: string): Promise<Uint8Array | null> {
+  console.log('[pickEpubBytes] called with path:', path);
   const tauri = await getCore();
-  const payload = await tauri.invoke<OpenedEpub>('read_epub', { path });
-  return payload?.bytes ?? null;
+  try {
+    const payload = await tauri.invoke<OpenedEpub>('read_epub', { path });
+    console.log('[pickEpubBytes] read_epub result:', payload);
+    return payload?.bytes ?? null;
+  } catch (err) {
+    console.error('[pickEpubBytes] read_epub error:', err);
+    throw err;
+  }
 }
 
 /**
@@ -95,5 +148,16 @@ export async function desktopVersion(): Promise<string> {
     return await tauri.invoke<string>('app_version');
   } catch {
     return '';
+  }
+}
+
+/** Toggle fullscreen on the main window. */
+export async function toggleFullscreen(): Promise<void> {
+  if (!isDesktop()) return;
+  const tauri = await getCore();
+  try {
+    await tauri.invoke('toggle_fullscreen');
+  } catch (err) {
+    console.error('[toggleFullscreen] error:', err);
   }
 }

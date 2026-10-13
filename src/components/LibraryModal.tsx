@@ -1,7 +1,14 @@
 import React, { useRef, useState } from 'react';
 import { SAMPLE_BOOKS, SampleBookDef } from '../utils/sampleBooks';
 import { parseEpubFile } from '../utils/epubParser';
-import { ParsedBook } from '../types/epub';
+import { ParsedBook, BookMetadata } from '../types/epub';
+import { pickEpubBytes, isDesktop } from '../utils/platform';
+
+interface LibraryBook {
+  metadata: BookMetadata;
+  sourcePath: string;
+  addedAt: number;
+}
 
 interface LibraryModalProps {
   isOpen: boolean;
@@ -9,6 +16,9 @@ interface LibraryModalProps {
   onSelectSampleBook: (bookId: string) => void;
   onLoadCustomBook: (book: ParsedBook) => void;
   activeBookTitle: string;
+  library: LibraryBook[];
+  onRemoveFromLibrary: (sourcePath: string) => void;
+  onAddEpubFiles: (multiple: boolean) => Promise<void>;
 }
 
 export const LibraryModal: React.FC<LibraryModalProps> = ({
@@ -16,7 +26,10 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
   onClose,
   onSelectSampleBook,
   onLoadCustomBook,
-  activeBookTitle
+  activeBookTitle,
+  library,
+  onRemoveFromLibrary,
+  onAddEpubFiles
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -24,6 +37,22 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
+
+  // Import via the native picker: only that path gives us a real file path,
+  // which the library needs to re-open the book later.
+  const handleBrowse = async () => {
+    if (isDesktop()) {
+      setErrorMsg(null);
+      setLoading(true);
+      try {
+        await onAddEpubFiles(false);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+    fileInputRef.current?.click();
+  };
 
   const handleFile = async (file: File) => {
     if (!file.name.toLowerCase().endsWith('.epub')) {
@@ -45,11 +74,15 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFile(e.dataTransfer.files[0]);
+      if (isDesktop()) {
+        await handleBrowse();
+      } else {
+        handleFile(e.dataTransfer.files[0]);
+      }
     }
   };
 
@@ -82,7 +115,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
             }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => { void handleBrowse(); }}
             className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
               isDragging
                 ? 'border-amber-400 bg-amber-400/5'
@@ -173,9 +206,94 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                 );
               })}
             </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
+                      </div>
+
+                      {/* User Library Grid */}
+                                            {library.length > 0 && (
+                                              <div>
+                                                <div className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-3">
+                                                  Meine Bibliothek
+                                                </div>
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                  {library.map((entry: LibraryBook) => {
+                                                    const isSelected = activeBookTitle === entry.metadata.title;
+                                                    return (
+                                                      <div
+                                                        key={entry.sourcePath}
+                                                        role="button"
+                                                        tabIndex={0}
+                                                        onClick={async () => {
+                                                          try {
+                                                            const bytes = await pickEpubBytes(entry.sourcePath);
+                                                            if (bytes) {
+                                                              const parsed = await parseEpubFile(bytes);
+                                                              onLoadCustomBook(parsed);
+                                                              onClose();
+                                                            }
+                                                          } catch (err) {
+                                                            console.error('Failed to load library book:', err);
+                                                          }
+                                                        }}
+                                                        onKeyDown={(e) => {
+                                                          if (e.key === 'Enter' || e.key === ' ') {
+                                                            e.preventDefault();
+                                                            (e.currentTarget as HTMLElement).click();
+                                                          }
+                                                        }}
+                                                        className={`flex items-start gap-3 p-3 rounded-xl border text-left transition-all relative cursor-pointer ${
+                                                          isSelected
+                                                            ? 'border-amber-400/80 bg-stone-800/90 shadow-md'
+                                                            : 'border-stone-800 bg-stone-950/50 hover:bg-stone-800/60 hover:border-stone-700'
+                                                        }`}
+                                                      >
+                                                        {/* Simulated miniature leather book cover */}
+                                                        <div
+                                                          className="w-12 h-16 rounded shadow-md shrink-0 flex flex-col justify-between p-1 border border-white/10"
+                                                          style={{ backgroundColor: entry.metadata.coverColor || '#221417' }}
+                                                        >
+                                                          <div className="text-[7px] text-amber-200/80 font-serif uppercase tracking-widest text-center truncate">
+                                                            {entry.metadata.author.split(' ').pop()}
+                                                          </div>
+                                                          <div className="text-[8px] text-amber-100 font-serif font-bold text-center line-clamp-2">
+                                                            {entry.metadata.title}
+                                                          </div>
+                                                          <div className="h-0.5 bg-amber-400/30 rounded" />
+                                                        </div>
+
+                                                        <div className="min-w-0 flex-1">
+                                                          <div className="font-serif font-semibold text-sm text-stone-100 truncate">
+                                                            {entry.metadata.title}
+                                                          </div>
+                                                          <div className="text-xs text-stone-400 truncate">
+                                                            {entry.metadata.author}
+                                                          </div>
+                                                          <p className="text-[11px] text-stone-500 line-clamp-2 mt-1 leading-snug">
+                                                            {entry.metadata.description || 'Keine Beschreibung verfügbar'}
+                                                          </p>
+                                                        </div>
+
+                                                        {/* Delete button */}
+                                                        <button
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onRemoveFromLibrary(entry.sourcePath);
+                                                          }}
+                                                          className="p-1 text-stone-500 hover:text-red-400 hover:bg-red-950/30 rounded transition-colors ml-2"
+                                                          title="Aus Bibliothek entfernen"
+                                                        >
+                                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                          </svg>
+                                                        </button>
+                                                      </div>
+                                                    );
+                                                  })}
+                                                </div>
+                                              </div>
+                                            )}
+                    </div>
+                  </div>
+                </div>
+              );
+            };
